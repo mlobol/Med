@@ -1,0 +1,4 @@
+[Project]
+Name=Med
+Manager=KDevCMakeManager
+VersionControl=kdevgit
