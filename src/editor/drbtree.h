@@ -10,11 +10,11 @@ namespace editor {
 
 class DRBTreeDefs {
 public:
-  enum class Side { SMALL, LARGE };
+  enum class Side { LEFT, RIGHT };
   enum class NodeColor { BLACK, RED };
   
   static Side other(Side side) {
-    return side == Side::SMALL ? Side::LARGE : Side::SMALL;
+    return side == Side::LEFT ? Side::RIGHT : Side::LEFT;
   }
   
   struct OperationOptions {
@@ -22,8 +22,8 @@ public:
       * 
       * Another way of seeing it is that nodes on this side are taken to have a smaller key, while nodes on the other side have a bigger key.
       */
-    Side deltaSide = Side::SMALL;
-      
+    Side deltaSide = Side::LEFT;
+    
     /** When multiple nodes with the same key exist, which end of the same-key segment to operate on.
       * 
       * When getting a node, the node on that end of the segment will be returned.
@@ -31,12 +31,12 @@ public:
       * When attaching a node, the node will become that end of the segment. If null, and there already is a node with that key, an error will be raised.
       */
     bool repeats = false;
-    Side repeatedSide = Side::SMALL;
+    Side repeatedSide = Side::LEFT;
     
     /** (Only meaningful when getting) If set, when getting a node with a key that doesn't exist in the tree, which adjacent existing node to return instead.
       */
     bool equalOrAdjacent = false;
-    Side equalOrAdjacentSide = Side::SMALL;
+    Side equalOrAdjacentSide = Side::LEFT;
   };
   
   class Error : public std::logic_error {
@@ -79,30 +79,21 @@ public:
   DRBTree() {}
   ~DRBTree() {}
   
-  bool empty() { return root == nullptr; }
+  /** Returns true iff the tree has no elements. */
+  bool empty() const { return root == nullptr; }
+  Delta totalDelta() const { return empty() ? zeroDelta : root->subtreeDelta; }
   
-  Node* extreme(Side side) {
-    return empty() ? nullptr : root->descendantAtEnd(side);
-  }
-  
-  Key extremeKey(Side side, OperationOptions options) {
-    return zeroKey + extremeDelta(options.deltaSide) +
-        (side == options.deltaSide ? zeroDelta : totalDelta() + extremeDelta(side));
-  }
-  
-  Delta totalDelta() {
-    return empty() ? zeroDelta : root->subtreeDelta();
-  }
-  
-  template<typename EntryType>
+  template<typename EntryType_>
   class IteratorTemplate {
   public:
+    typedef EntryType_ EntryType;
+    
     bool operator==(const IteratorTemplate& other) const { return entry.node == other.entry.node; }
     bool operator!=(const IteratorTemplate& other) const { return !operator==(other); }
     
     void operator++() {
       entry.key += entry.node->delta;
-      entry.node = entry.node->adjacent(Side::LARGE);
+      entry.node = entry.node->adjacent(Side::RIGHT);
     }
     
     const EntryType& operator*() const { return entry; }
@@ -114,12 +105,6 @@ public:
     EntryType entry;
   };
   
-  template<typename IteratorType>
-  IteratorType beginInternal() { return IteratorType({smallestExtremeDelta, root->descendantAtEnd(Side::SMALL)}); }
-  
-  template<typename IteratorType>
-  IteratorType endInternal() { return IteratorType({zeroKey, nullptr}); }
-
   typedef IteratorTemplate<ConstEntry> ConstIterator;
   typedef IteratorTemplate<Entry> Iterator;
   
@@ -134,12 +119,12 @@ public:
     if (root == nullptr) return {zeroKey, nullptr};
     Node* parent = nullptr;
     Node* current = root;
-    // The predecessor of smallest element of the subtree "current" is the root of.
+    // The predecessor of leftmost element of the subtree "current" is the root of.
     Node* predecessorOfSubtree = nullptr;
-    // Key at the smallest element of the subtree "current" is the root of.
+    // Key at the leftmost element of the subtree "current" is the root of.
     Key keyAtSubtree = zeroKey + extremeDelta(options.deltaSide);
     Key foundKey = zeroKey;
-    Side dir = Side::SMALL;
+    Side dir = Side::LEFT;
     Node* found = nullptr;
     while (current != nullptr) {
       const Key keyAtNode = keyAtSubtree + current->children.subtreeDelta(options.deltaSide);
@@ -184,7 +169,7 @@ public:
     if (node->isAttached()) throw new Error("The node is already attached.");
     node->color = NodeColor::RED;
     node->delta = zeroDelta;
-    /** Both the key and the predecessor of a subtree are those of its smallest element. */ 
+    /** Both the key and the predecessor of a subtree are those of its leftmost element. */ 
     struct Subtree { Key key; Node* predecessor; };
     Subtree subtree{zeroKey + extremeDelta(options.deltaSide), nullptr};
     if (root == nullptr) {
@@ -198,18 +183,18 @@ public:
       Node* current = root;
       bool hasLast = false;
       Side last;
-      Side dir = Side::SMALL;
+      Side dir = Side::LEFT;
       while (current != node) {
         if (current == nullptr) {
           // Insert at leaf
           current = node;
           parent->children.get(dir) = node;
           node->parent = parent;
-        } else if (Node::isRed(current->children.get(Side::SMALL)) &&
-            Node::isRed(current->children.get(Side::LARGE))) {
+        } else if (Node::isRed(current->children.get(Side::LEFT)) &&
+            Node::isRed(current->children.get(Side::RIGHT))) {
           current->color = NodeColor::RED;
-          current->children.get(Side::SMALL)->color = NodeColor::BLACK;
-          current->children.get(Side::LARGE)->color = NodeColor::BLACK;
+          current->children.get(Side::LEFT)->color = NodeColor::BLACK;
+          current->children.get(Side::RIGHT)->color = NodeColor::BLACK;
         }
         
         if (Node::isRed(current) && Node::isRed(parent)) {
@@ -246,7 +231,7 @@ public:
           parentSubtree = subtree;
           current = current->children.get(dir);
           if (dir != options.deltaSide) {
-            // We've moved to a subtree with a different (bigger) smallest element.
+            // We've moved to a subtree with a different (bigger) leftmost element.
             subtree = Subtree{keyAtNode + parent->delta, parent};
           }
         }
@@ -269,7 +254,7 @@ public:
       }
       subtree.predecessor->updateSubtreeDelta();
     } else {
-      // Inserting at the tree's smallest end.
+      // Inserting at the tree's leftmost end.
       if (root == node)
         // First node in the tree.
         node->delta = zeroDelta;
@@ -283,10 +268,25 @@ public:
 private:
   friend class DRBTreeTest;
   
-  Node* root = nullptr;
+  template<typename IteratorType>
+  IteratorType extremeInternal(Side side, OperationOptions options) {
+    typename IteratorType::EntryType entry{zeroKey, nullptr};
+    if (!empty()) {
+      entry.key += extremeDelta(options.deltaSide);
+      if (side != options.deltaSide) entry.key += totalDelta() + extremeDelta(side);
+      entry.node = root->descendantAtEnd(side);
+    }
+    return IteratorType(entry);
+  }
+  
+  template<typename IteratorType>
+  IteratorType beginInternal() { return extremeInternal<IteratorType>(Side::LEFT, {}); }
+  
+  template<typename IteratorType>
+  IteratorType endInternal() { return IteratorType({zeroKey, nullptr}); }
 
   Delta& extremeDelta(Side side) {
-    return side == Side::SMALL ? smallestExtremeDelta : largestExtremeDelta;
+    return side == Side::LEFT ? leftmostExtremeDelta : rightmostExtremeDelta;
   }
   
   class InternalError : public std::logic_error { using std::logic_error::logic_error; };
@@ -294,8 +294,8 @@ private:
   class Children {
   public:
     Side sideWithNode(Node* node) {
-      if (smallKeyChild == node) return Side::SMALL;
-      else if (largeKeyChild == node) return Side::LARGE;
+      if (leftChild == node) return Side::LEFT;
+      else if (rightChild == node) return Side::RIGHT;
       else throw InternalError("No side with the requested node!");
     }
     
@@ -307,7 +307,7 @@ private:
       return child != nullptr ? child->subtreeDelta : zeroDelta;
     }
     
-    Delta totalSubtreeDeltas() { return subtreeDelta(Side::SMALL) + subtreeDelta(Side::LARGE); }
+    Delta totalSubtreeDeltas() { return subtreeDelta(Side::LEFT) + subtreeDelta(Side::RIGHT); }
     
     /** If the child exists, update its subtree delta. */
     void updateSubtreeDelta(Side side) {
@@ -318,9 +318,9 @@ private:
     /** Requires that this node has at most one child; returns that child, or null if the node has no children. 
      */
     Node* onlyChild() {
-      if (smallKeyChild != nullptr && largeKeyChild != nullptr)
+      if (leftChild != nullptr && rightChild != nullptr)
         throw InternalError("Node has both children!");
-      return smallKeyChild != nullptr ? smallKeyChild : largeKeyChild;
+      return leftChild != nullptr ? leftChild : rightChild;
     }
     
     /** Set the parent of any children to @a parent.
@@ -348,8 +348,8 @@ private:
       
       void operator++() {
         if (finished) throw InternalError("Advancing finished iterator!");
-        if (side == Side::SMALL) {
-          side = Side::LARGE;
+        if (side == Side::LEFT) {
+          side = Side::RIGHT;
           if (operator*() != nullptr) return;
         }
         finished = true;
@@ -358,7 +358,7 @@ private:
     private:
       const Children* children = nullptr;
       bool finished = false;
-      Side side = Side::SMALL;      
+      Side side = Side::LEFT;      
     };
     
     typedef IteratorTemplate<Node> Iterator;
@@ -373,11 +373,11 @@ private:
   private:
     template<typename ChildrenType>
     static auto& getInternal(ChildrenType* children, Side side) {
-      return side == Side::SMALL ? children->smallKeyChild : children->largeKeyChild;
+      return side == Side::LEFT ? children->leftChild : children->rightChild;
     }
 
-    Node* smallKeyChild = nullptr;
-    Node* largeKeyChild = nullptr;
+    Node* leftChild = nullptr;
+    Node* rightChild = nullptr;
   };
   
   void rotateSingle(Node* oldRoot, Side dir) {
@@ -434,23 +434,23 @@ private:
     }
 
     detached->parent = nullptr;
-    detached->children.get(Side::SMALL) = nullptr;
-    detached->children.get(Side::LARGE) = nullptr;
+    detached->children.get(Side::LEFT) = nullptr;
+    detached->children.get(Side::RIGHT) = nullptr;
   }
 
   void detach(Node* node) {
     Node* current = nullptr;
-    if (node->children.get(Side::SMALL) != nullptr &&
-        node->children.get(Side::LARGE) != nullptr) {
+    if (node->children.get(Side::LEFT) != nullptr &&
+        node->children.get(Side::RIGHT) != nullptr) {
       // If the node has both children, get the predecessor,
       // which will be the rightmost leaf of the left child.
-      current = node->adjacent(Side::SMALL);
+      current = node->adjacent(Side::LEFT);
     } else if (node == root) {
       // We are going to delete root and it only has one child,
       // so make that child the new root.
       root = node->children.onlyChild();
-      node->children.update(Side::SMALL, nullptr);
-      node->children.update(Side::LARGE, nullptr);
+      node->children.update(Side::LEFT, nullptr);
+      node->children.update(Side::RIGHT, nullptr);
       if (root != nullptr) {
         root->color = NodeColor::BLACK;
         root->parent = nullptr;
@@ -485,8 +485,8 @@ private:
         }
 
         if (sibling != nullptr) {
-          if (!isRed(sibling->children(Side::SMALL)) &&
-              !isRed(sibling->children(Side::LARGE))) {
+          if (!isRed(sibling->children(Side::LEFT)) &&
+              !isRed(sibling->children(Side::RIGHT))) {
             bool done = isRed(current);
             current->color = NodeColor::BLACK;
             sibling->color = NodeColor::RED;
@@ -501,8 +501,8 @@ private:
             current = current->parent;
 
             current->color = savedColor;
-            current->children(Side::SMALL).color = NodeColor::BLACK;
-            current->children(Side::LARGE).color = NodeColor::BLACK;
+            current->children(Side::LEFT).color = NodeColor::BLACK;
+            current->children(Side::RIGHT).color = NodeColor::BLACK;
             break;
           }
         }
@@ -518,8 +518,13 @@ private:
     }
   }
 
-  Delta smallestExtremeDelta = zeroDelta;
-  Delta largestExtremeDelta = zeroDelta;
+  // The tree's root. It's null iff the tree is empty.
+  Node* root = nullptr;
+
+  // Delta from the logical left end of the tree to the leftmost actual element. This allows the leftmost element to have a non-zero left-side key. Undefined if the tree is empty.
+  Delta leftmostExtremeDelta = zeroDelta;
+  // Delta from the logical right end of the tree to the rightmost actual element. This allows the rightmost element to have a non-zero right-side key. Undefined if the tree is empty.
+  Delta rightmostExtremeDelta = zeroDelta;
 };
 
 template<typename Key, typename Delta, typename Value>

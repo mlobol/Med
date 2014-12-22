@@ -37,7 +37,7 @@ protected:
       int checkBlacksToLeaf(const typename Tree::Node* node) {
         if (node == nullptr) return 0;
         std::set<int> childrenBlacksToLeaf;
-        for (DRBTreeDefs::Side side : {DRBTreeDefs::Side::SMALL, DRBTreeDefs::Side::LARGE})
+        for (DRBTreeDefs::Side side : {DRBTreeDefs::Side::LEFT, DRBTreeDefs::Side::RIGHT})
           childrenBlacksToLeaf.insert(checkBlacksToLeaf(node->children.get(side)));
         EXPECT_EQ(1, childrenBlacksToLeaf.size());
         if (childrenBlacksToLeaf.empty()) return 0;
@@ -120,7 +120,7 @@ TEST_F(DRBTreeTest, DoubleRotationAtRoot) {
 }
 
 TEST_F(DRBTreeTest, Permutations) {
-  std::vector<int> keys = {10, 51, 12, 73, 95, 34, 45, 26, 87, 78, 69};
+  std::vector<int> keys = {10, 51, 12, 73, 95, 34, 45};
   do {
     buildAndTestTree(keys);
   } while (std::next_permutation(keys.begin(), keys.end()));
