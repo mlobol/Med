@@ -131,7 +131,7 @@ pattern=*.o
 targets=1
 
 [Launch]
-Launch Configurations=Launch Configuration 0
+Launch Configurations=Launch Configuration 0,Launch Configuration 1
 
 [Launch][Launch Configuration 0]
 Configured Launch Modes=execute
@@ -155,6 +155,24 @@ Remote GDB Config Script=
 Remote GDB Run Script=
 Remote GDB Shell Script=
 Start With=ApplicationOutput
+Use External Terminal=false
+Working Directory=
+isExecutable=false
+
+[Launch][Launch Configuration 1]
+Configured Launch Modes=execute
+Configured Launchers=nativeAppLauncher
+Name=MedMain
+Type=Native Application
+
+[Launch][Launch Configuration 1][Data]
+Arguments=
+Dependencies=@Variant(\x00\x00\x00\t\x00\x00\x00\x00\x00)
+Dependency Action=Nothing
+EnvironmentGroup=default
+Executable=file:///home/mlobo/projects/Med/
+External Terminal=konsole --noclose --workdir %workdir -e %exe
+Project Target=Med,MedMain
 Use External Terminal=false
 Working Directory=
 isExecutable=false
