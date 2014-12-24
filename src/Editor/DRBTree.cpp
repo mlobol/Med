@@ -1,8 +1,8 @@
 #include "DRBTree.h"
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 

@@ -7,8 +7,8 @@
 
 #include "Buffer.h"
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
 
 class Buffers : public QObject {
   Q_OBJECT
@@ -25,8 +25,8 @@ private:
   std::list<std::unique_ptr<Buffer>> openBuffers;
 };
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 
 #endif // MED_EDITOR_BUFFERS_H
 

@@ -5,8 +5,8 @@
 #include <memory>
 #include <string>
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
   
 class IOException : public std::runtime_error {
   using std::runtime_error::runtime_error;
@@ -25,8 +25,8 @@ private:
   std::unique_ptr<Lines> lines;
 };
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 
 #endif // MED_EDITOR_BUFFER_H
 

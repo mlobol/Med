@@ -7,8 +7,8 @@
 
 #include "DRBTree.h"
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
 
 class Buffer::Lines {
 public:
@@ -37,6 +37,6 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   return buffer;
 }
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 

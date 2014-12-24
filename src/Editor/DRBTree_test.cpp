@@ -6,8 +6,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
 
 class DRBTreeTest : public ::testing::Test {
 protected:
@@ -126,6 +126,6 @@ TEST_F(DRBTreeTest, Permutations) {
   } while (std::next_permutation(keys.begin(), keys.end()));
 }
   
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 

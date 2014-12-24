@@ -5,8 +5,8 @@
 #include <utility>
 #include <stdexcept>
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
 
 class DRBTreeDefs {
 public:
@@ -648,7 +648,7 @@ Node = null): String = {
 #if 0
 #endif
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 
 #endif // MED_EDITOR_DRBTREE_H

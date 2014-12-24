@@ -1,7 +1,7 @@
 #include "Buffers.h"
 
-namespace med {
-namespace editor {
+namespace Med {
+namespace Editor {
   
 Buffers::Buffers() {}
 Buffers::~Buffers() {}
@@ -11,6 +11,6 @@ void Buffers::Open(const std::string& filePath) {
   emit newBuffer(openBuffers.back().get());
 }
 
-}  // namespace editor
-}  // namespace med
+}  // namespace Editor
+}  // namespace Med
 
