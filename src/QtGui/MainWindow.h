@@ -1,5 +1,5 @@
-#ifndef MED_QT_GUI_MAINWINDOW_H
-#define MED_QT_GUI_MAINWINDOW_H
+#ifndef MED_QTGUI_MAINWINDOW_H
+#define MED_QTGUI_MAINWINDOW_H
 
 #include <QtWidgets/QMainWindow>
 
@@ -24,5 +24,5 @@ private:
 }  // namespace QtGui
 }  // namespace Med
 
-#endif // MED_QT_GUI_MAINWINDOW_H
+#endif // MED_QTGUI_MAINWINDOW_H
 
