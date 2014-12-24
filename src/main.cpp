@@ -1,5 +1,5 @@
 #include <QtWidgets/QApplication>
-#include "qt_gui/MainWindow.h"
+#include "QtGui/MainWindow.h"
 
 namespace med {
 

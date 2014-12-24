@@ -8,7 +8,7 @@ find_package(Qt5Widgets REQUIRED)
 
 add_definitions("-std=c++1y")
 include_directories(src)
-set(Med_SRCS src/editor/drbtree.cpp src/editor/buffer.cpp src/editor/buffers.cpp src/qt_gui/MainWindow.cpp)
+set(Med_SRCS src/Editor/DRBTree.cpp src/Editor/Buffer.cpp src/Editor/Buffers.cpp src/QtGui/MainWindow.cpp)
 add_library(Med ${Med_SRCS})
 qt5_use_modules(Med Widgets)
 
@@ -27,7 +27,7 @@ set(GTEST_ROOT ${GMOCK_ROOT}/gtest)
 find_package(GTest REQUIRED)
 include_directories(${GMOCK_INCLUDE_DIRS} ${GTEST_INCLUDE_DIRS})
 
-set(MedTest_SRCS src/editor/drbtree_test.cpp)
+set(MedTest_SRCS src/Editor/DRBTree_test.cpp)
 add_executable(MedTest ${MedTest_SRCS})
 target_link_libraries(MedTest Med ${GMOCK_MAIN_LIBRARIES} ${GMOCK_LIBRARIES} ${GTEST_LIBRARIES} -lpthread)
 
