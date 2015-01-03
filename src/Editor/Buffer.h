@@ -5,6 +5,10 @@
 #include <memory>
 #include <string>
 
+#include <QtCore/QString>
+
+#include "Util/IteratorHelper.h"
+
 namespace Med {
 namespace Editor {
   
@@ -16,6 +20,26 @@ class Buffer {
 public:
   virtual ~Buffer();
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
+  
+  struct Line {
+    int lineNumber;
+    QString* content;
+  };
+  
+  typedef Util::IteratorHelper<Line> Iterator;
+  
+  class IterableFromLineNumber {
+  public:
+    IterableFromLineNumber(Buffer* buffer, int lineNumber) : buffer(buffer), lineNumber(lineNumber) {}
+    
+    Iterator begin();
+    Iterator end() { return {}; }
+    
+    Buffer* buffer;
+    int lineNumber;
+  };
+  
+  IterableFromLineNumber iterateFromLineNumber(int lineNumber);
   
 private:
   class Lines;

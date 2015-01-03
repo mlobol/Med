@@ -1,6 +1,5 @@
 #include "MainWindow.h"
 
-#include <QtWidgets/QAbstractScrollArea>
 #include <QtWidgets/QAction>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QLabel>
@@ -10,14 +9,9 @@
 namespace Med {
 namespace QtGui {
 
-class ScrollArea : public QAbstractScrollArea {
-  using QAbstractScrollArea::QAbstractScrollArea;
-};
-
-MainWindow::MainWindow() {
-  ScrollArea* scrollArea = new ScrollArea(this);
-  setCentralWidget(scrollArea);
-
+MainWindow::MainWindow() : tabWidget(this) {
+  setCentralWidget(&tabWidget);
+  
   const auto addAction = [this](const char* text, QKeySequence shortcut, QMenu* menu, std::function<void()> callOnTrigger) {
     QAction* action = new QAction(this);
     action->setText(text);
@@ -32,13 +26,14 @@ MainWindow::MainWindow() {
     buffers.Open(QFileDialog::getOpenFileName().toStdString());
   });
   
-  connect(&buffers, &Editor::Buffers::newBuffer, this, &MainWindow::handleNewBuffer);
+  QObject::connect(&buffers, &Editor::Buffers::newBuffer, this, &MainWindow::handleNewBuffer);
 }
 
 MainWindow::~MainWindow() {}
 
 void MainWindow::handleNewBuffer(Editor::Buffer* buffer) {
-  
+  bufferWidgets.emplace_back(buffer);
+  tabWidget.addTab(&bufferWidgets.back(), "");
 }
 
 }  // namespace QtGui

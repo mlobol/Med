@@ -2,7 +2,9 @@
 #define MED_QTGUI_MAINWINDOW_H
 
 #include <QtWidgets/QMainWindow>
+#include <QtWidgets/QTabWidget>
 
+#include "Buffer.h"
 #include "Editor/Buffers.h"
 
 namespace Med {
@@ -19,6 +21,9 @@ private slots:
   
 private:
   Editor::Buffers buffers;
+  
+  std::list<Buffer> bufferWidgets;
+  QTabWidget tabWidget;
 };
 
 }  // namespace QtGui
