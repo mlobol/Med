@@ -32,8 +32,8 @@ MainWindow::MainWindow() : tabWidget(this) {
 MainWindow::~MainWindow() {}
 
 void MainWindow::handleNewBuffer(Editor::Buffer* buffer) {
-  bufferWidgets.emplace_back(buffer);
-  tabWidget.addTab(&bufferWidgets.back(), "");
+  bufferWidgets.push_back(new Buffer(buffer));
+  tabWidget.addTab(bufferWidgets.back(), "");
 }
 
 }  // namespace QtGui

@@ -22,7 +22,7 @@ private slots:
 private:
   Editor::Buffers buffers;
   
-  std::list<Buffer> bufferWidgets;
+  std::list<Buffer*> bufferWidgets;
   QTabWidget tabWidget;
 };
 
