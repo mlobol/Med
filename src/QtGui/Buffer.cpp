@@ -9,11 +9,15 @@ namespace QtGui {
 
 class Buffer::Lines : public QWidget {
 public:
-  Lines(QWidget* parent, Buffer* buffer) : QWidget(parent), buffer(buffer) {}
+  Lines(QWidget* parent, Buffer* buffer) : QWidget(parent), buffer(buffer) {
+    // Not sure if this is needed. Seems like it should be but also to work without it.
+    setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+  }
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
     painter.drawText(rect(), Qt::AlignCenter, "Test\nString");
+    QWidget::paintEvent(event);
   }
   
   Buffer* buffer;
@@ -21,10 +25,13 @@ public:
   
 class Buffer::ScrollArea : public QAbstractScrollArea {
 public:
-  ScrollArea(QWidget* parent, Buffer* buffer): QAbstractScrollArea(parent), buffer(buffer) {
-    
-  }
+  ScrollArea(QWidget* parent, Buffer* buffer): QAbstractScrollArea(parent), buffer(buffer) {}
 
+  void paintEvent(QPaintEvent* event) override {
+    // Don't know why I have to call this explicitly.
+    buffer->lines->paintEvent(event);
+  }
+  
   Buffer* buffer;
 };
 
@@ -36,6 +43,7 @@ Buffer::Buffer(Editor::Buffer* buffer) : buffer(buffer) {
   layout->addWidget(scrollArea);
   setLayout(layout);
 }
+
 Buffer::~Buffer() {}
 
 }  // namespace QtGui
