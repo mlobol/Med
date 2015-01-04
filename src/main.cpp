@@ -6,7 +6,7 @@ namespace Med {
 int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   QtGui::MainWindow foo;
-  foo.show();
+  foo.showMaximized();
   return app.exec();
 }
   
