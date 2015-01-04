@@ -6,6 +6,7 @@
 #include <string>
 
 #include <QtCore/QString>
+#include <QtCore/QTextStream>
 
 #include "Util/IteratorHelper.h"
 
@@ -42,9 +43,13 @@ public:
   IterableFromLineNumber iterateFromLineNumber(int lineNumber);
   
 private:
+  friend class BufferTest;
+  
   class Lines;
   
   Buffer();
+  
+  void InitFromStream(QTextStream* stream);
   
   std::unique_ptr<Lines> lines;
 };

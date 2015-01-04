@@ -1,9 +1,7 @@
 #include "Buffer.h"
 
 #include <memory>
-#include <QFile>
-#include <QString>
-#include <QTextStream>
+#include <QtCore/QFile>
 
 #include "Util/DRBTree.h"
 
@@ -12,7 +10,7 @@ namespace Editor {
 
 class Buffer::Lines {
 public:
-  typedef DRBTree<int, int, QString> Tree;
+  typedef Util::DRBTree<int, int, QString> Tree;
   
   class LineIterator : public Iterator::Impl {
   public:
@@ -37,6 +35,16 @@ public:
 Buffer::Buffer() : lines(new Lines()) {}
 Buffer::~Buffer() {}
 
+void Buffer::InitFromStream(QTextStream* stream) {
+  while (true) {
+    auto node = std::make_unique<Lines::Tree::Node>();
+    node->value = stream->readLine();
+    if (node->value.isNull()) break;
+    int lineNumber = lines->tree.extreme(Util::DRBTreeDefs::Side::RIGHT, {})->key + 1;
+    lines->tree.attach(node.get(), lineNumber, {});
+  }
+}
+
 std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   QFile file(QString::fromStdString(filePath));
   if (!file.open(QFile::ReadOnly)) {
@@ -44,20 +52,19 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   }
   std::unique_ptr<Buffer> buffer(new Buffer());
   QTextStream stream(&file);
-  while (true) {
-    auto node = std::make_unique<Lines::Tree::Node>();
-    node->value = stream.readLine();
-    if (node->value.isNull()) break;
-    int line = buffer->lines->tree.extreme(DRBTreeDefs::Side::RIGHT, {})->key + 1;
-    buffer->lines->tree.attach(node.get(), line, {});
-  }
+  buffer->InitFromStream(&stream);
   return buffer;
 }
 
 Buffer::Iterator Buffer::IterableFromLineNumber::begin() {
-  return {std::make_unique<Lines::LineIterator>(buffer->lines->tree.get(lineNumber, {}))};
+  std::unique_ptr<Lines::LineIterator> lineIterator;
+  Lines::Tree::Iterator treeIterator = buffer->lines->tree.get(lineNumber, {});
+  if (!treeIterator.finished()) {
+    lineIterator.reset(new Lines::LineIterator(treeIterator));
+  }
+  return {std::move(lineIterator)};
 }
-  
+
 Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
   return {this, lineNumber};
 }
