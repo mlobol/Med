@@ -12,17 +12,18 @@ namespace QtGui {
 MainWindow::MainWindow() : tabWidget(this) {
   setCentralWidget(&tabWidget);
   
-  const auto addAction = [this](const char* text, QKeySequence shortcut, QMenu* menu, std::function<void()> callOnTrigger) {
+  const auto addNewAction = [this](const char* text, QKeySequence shortcut, QMenu* menu, std::function<void()> callOnTrigger) {
     QAction* action = new QAction(this);
     action->setText(text);
     action->setShortcut(shortcut);
     QObject::connect(action, &QAction::triggered, this, callOnTrigger);
+    addAction(action);
     if (menu != nullptr) menu->addAction(action);
     return action;
   };
   QMenu* fileMenu = menuBar()->addMenu("File");
-  addAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
-  addAction("Open", QKeySequence::Open, fileMenu, [this]() {
+  addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
+  addNewAction("Open", QKeySequence::Open, fileMenu, [this]() {
     buffers.Open(QFileDialog::getOpenFileName().toStdString());
   });
   
