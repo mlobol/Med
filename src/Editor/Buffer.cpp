@@ -21,9 +21,9 @@ public:
     }
     
     bool advance() override {
-      if (treeIterator.finished()) return true;
+      if (treeIterator.finished()) return false;
       ++treeIterator;
-      return false;
+      return true;
     }
     
     Tree::Iterator treeIterator;
@@ -41,7 +41,7 @@ void Buffer::InitFromStream(QTextStream* stream) {
     node->value = stream->readLine();
     if (node->value.isNull()) break;
     int lineNumber = lines->tree.extreme(Util::DRBTreeDefs::Side::RIGHT, {})->key + 1;
-    lines->tree.attach(node.get(), lineNumber, {});
+    lines->tree.attach(node.release(), lineNumber, {});
   }
 }
 
@@ -71,4 +71,3 @@ Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
 
 }  // namespace Editor
 }  // namespace Med
-

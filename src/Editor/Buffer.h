@@ -19,9 +19,6 @@ class IOException : public std::runtime_error {
 
 class Buffer {
 public:
-  virtual ~Buffer();
-  static std::unique_ptr<Buffer> Open(const std::string& filePath);
-  
   struct Line {
     int lineNumber;
     QString* content;
@@ -35,10 +32,17 @@ public:
     
     Iterator begin();
     Iterator end() { return {}; }
-    
+  
+  private:
     Buffer* buffer;
     int lineNumber;
   };
+
+  static std::unique_ptr<Buffer> Open(const std::string& filePath);
+  
+  ~Buffer();
+  
+  const QString& getName() { return name; }
   
   IterableFromLineNumber iterateFromLineNumber(int lineNumber);
   
@@ -52,6 +56,7 @@ private:
   void InitFromStream(QTextStream* stream);
   
   std::unique_ptr<Lines> lines;
+  QString name;
 };
 
 }  // namespace Editor
