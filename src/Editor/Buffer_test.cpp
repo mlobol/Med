@@ -14,7 +14,7 @@ protected:
     QTextStream stream(string);
     buffer.InitFromStream(&stream);
   }
-  
+
   Buffer buffer;
 };
 
@@ -24,17 +24,28 @@ TEST_F(BufferTest, IterateFromLineNumber) {
     second line
     third line
     fourth line)");
-  
-  std::vector<std::pair<int, std::string>> lines;
-  for (Buffer::Line line : buffer.iterateFromLineNumber(2)) {
-    lines.emplace_back(line.lineNumber, line.content->trimmed().toStdString());
-    // Breaking before reaching the end of the iterator should work.
-    if (lines.size() == 2) break;
+  {
+    std::vector<std::pair<int, std::string>> lines;
+    for (Buffer::Line line : buffer.iterateFromLineNumber(2)) {
+      lines.emplace_back(line.lineNumber, line.content->trimmed().toStdString());
+    }
+    EXPECT_THAT(lines,
+                testing::ElementsAre(testing::Pair(2, "second line"),
+                                     testing::Pair(3, "third line"),
+                                     testing::Pair(4, "fourth line")));
   }
-  EXPECT_THAT(lines, testing::ElementsAre(
-    testing::Pair(2, "second line"),
-    testing::Pair(3, "third line")));
+  {
+    std::vector<std::pair<int, std::string>> lines;
+    for (Buffer::Line line : buffer.iterateFromLineNumber(2)) {
+      lines.emplace_back(line.lineNumber, line.content->trimmed().toStdString());
+      // Breaking before reaching the end of the iterator should work.
+      if (lines.size() == 2) break;
+    }
+    EXPECT_THAT(lines,
+                testing::ElementsAre(testing::Pair(2, "second line"),
+                                     testing::Pair(3, "third line")));
+  }
 }
-  
+
 }  // namespace Editor
 }  // namespace Med

@@ -21,9 +21,8 @@ public:
     }
     
     bool advance() override {
-      if (treeIterator.finished()) return false;
       ++treeIterator;
-      return true;
+      return !treeIterator.finished();
     }
     
     Tree::Iterator treeIterator;
