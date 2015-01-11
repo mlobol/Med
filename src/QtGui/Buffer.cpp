@@ -12,15 +12,29 @@ public:
   Lines(QWidget* parent, Buffer* buffer) : QWidget(parent), buffer(buffer) {
     // Not sure if this is needed. Seems like it should be but also to work without it.
     setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+    setTextFont({});
   }
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    painter.drawText(rect(), Qt::AlignCenter, "Test\nString");
+    QPoint textPos(0, textFontMetrics->leading() + textFontMetrics->height());
+    for (Editor::Buffer::Line line : buffer->buffer->iterateFromLineNumber(pageTopLineNumber)) {
+      painter.drawText(textPos, *line.content);
+      textPos.ry() += textFontMetrics->lineSpacing();
+    }
     QWidget::paintEvent(event);
   }
   
+  void setTextFont(const QFont& font) {
+    textFont.reset(new QFont(font));
+    textFontMetrics.reset(new QFontMetrics(*textFont));
+  }
+  
+  std::unique_ptr<QFont> textFont;
+  std::unique_ptr<QFontMetrics> textFontMetrics;
+  
   Buffer* buffer;
+  int pageTopLineNumber = 1;
 };
   
 class Buffer::ScrollArea : public QAbstractScrollArea {
