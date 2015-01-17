@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 
 #include "Util/DRBTree.h"
 
@@ -31,17 +32,18 @@ public:
   Tree tree;
 };
 
-Buffer::Buffer() : lines(new Lines()) {}
+Buffer::Buffer() : lines_(new Lines()) {}
 Buffer::~Buffer() {}
 
-void Buffer::InitFromStream(QTextStream* stream) {
+void Buffer::InitFromStream(QTextStream* stream, const QString& name) {
   while (true) {
     auto node = std::make_unique<Lines::Tree::Node>();
     node->value = stream->readLine();
     if (node->value.isNull()) break;
-    int lineNumber = lines->tree.extreme(Util::DRBTreeDefs::Side::RIGHT, {})->key + 1;
-    lines->tree.attach(node.release(), lineNumber, {});
+    int lineNumber = lines_->tree.extreme(Util::DRBTreeDefs::Side::RIGHT, {})->key + 1;
+    lines_->tree.attach(node.release(), lineNumber, {});
   }
+  name_ = name;
 }
 
 std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
@@ -50,14 +52,15 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
     throw IOException("Failed to open file " + filePath + ".");
   }
   std::unique_ptr<Buffer> buffer(new Buffer());
+  QFileInfo fileInfo(file);
   QTextStream stream(&file);
-  buffer->InitFromStream(&stream);
+  buffer->InitFromStream(&stream, fileInfo.baseName());
   return buffer;
 }
 
 Buffer::Iterator Buffer::IterableFromLineNumber::begin() {
   std::unique_ptr<Lines::LineIterator> lineIterator;
-  Lines::Tree::Iterator treeIterator = buffer->lines->tree.get(lineNumber, {});
+  Lines::Tree::Iterator treeIterator = buffer->lines_->tree.get(lineNumber, {});
   if (!treeIterator.finished()) {
     lineIterator.reset(new Lines::LineIterator(treeIterator));
   }

@@ -42,7 +42,7 @@ public:
   
   ~Buffer();
   
-  const QString& getName() { return name; }
+  const QString& name() { return name_; }
   
   IterableFromLineNumber iterateFromLineNumber(int lineNumber);
   
@@ -53,10 +53,10 @@ private:
   
   Buffer();
   
-  void InitFromStream(QTextStream* stream);
+  void InitFromStream(QTextStream* stream, const QString& name);
   
-  std::unique_ptr<Lines> lines;
-  QString name;
+  std::unique_ptr<Lines> lines_;
+  QString name_;
 };
 
 }  // namespace Editor

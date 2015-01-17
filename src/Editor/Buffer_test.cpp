@@ -12,7 +12,7 @@ class BufferTest : public ::testing::Test {
 protected:
   void InitBuffer(const char* string) {
     QTextStream stream(string);
-    buffer.InitFromStream(&stream);
+    buffer.InitFromStream(&stream, "test");
   }
 
   Buffer buffer;
@@ -24,6 +24,8 @@ TEST_F(BufferTest, IterateFromLineNumber) {
     second line
     third line
     fourth line)");
+  EXPECT_EQ("test", buffer.name());
+  
   {
     std::vector<std::pair<int, std::string>> lines;
     for (Buffer::Line line : buffer.iterateFromLineNumber(2)) {
