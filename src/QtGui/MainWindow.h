@@ -4,25 +4,23 @@
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QTabWidget>
 
-#include "Buffer.h"
+#include "View.h"
 #include "Editor/Buffers.h"
+#include "Editor/Views.h"
 
 namespace Med {
 namespace QtGui {
 
 class MainWindow : public QMainWindow {
-  Q_OBJECT
 public:
   MainWindow();
   virtual ~MainWindow();
   
-private slots:
-  void handleNewBuffer(Editor::Buffer* buffer);
-  
 private:
-  Editor::Buffers buffers;
+  Editor::Buffers buffers_;
+  Editor::Views views_;
   
-  std::list<Buffer*> bufferWidgets;
+  std::list<View*> viewWidgets;
   QTabWidget tabWidget;
 };
 

@@ -10,19 +10,15 @@
 namespace Med {
 namespace Editor {
 
-class Buffers : public QObject {
-  Q_OBJECT
+class Buffers {
 public:
   Buffers();
   virtual ~Buffers();
   
-  void Open(const std::string& filePath);
-  
-signals:
-  void newBuffer(Buffer* buffer);
+  Buffer* Open(const std::string& filePath);
   
 private:
-  std::list<std::unique_ptr<Buffer>> openBuffers;
+  std::list<std::unique_ptr<Buffer>> buffers_;
 };
 
 }  // namespace Editor
