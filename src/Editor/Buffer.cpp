@@ -15,18 +15,18 @@ public:
   
   class LineIterator : public Iterator::Impl {
   public:
-    LineIterator(Tree::Iterator treeIterator) : treeIterator(treeIterator) {}
+    LineIterator(Tree::Iterator treeIterator) : treeIterator_(treeIterator) {}
     
     Line get() const override {
-      return {treeIterator->key, &treeIterator->node->value};
+      return {treeIterator_->key, &treeIterator_->node->value};
     }
     
     bool advance() override {
-      ++treeIterator;
-      return !treeIterator.finished();
+      ++treeIterator_;
+      return !treeIterator_.finished();
     }
     
-    Tree::Iterator treeIterator;
+    Tree::Iterator treeIterator_;
   };
   
   Tree tree;
@@ -60,12 +60,14 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
 
 Buffer::Iterator Buffer::IterableFromLineNumber::begin() {
   std::unique_ptr<Lines::LineIterator> lineIterator;
-  Lines::Tree::Iterator treeIterator = buffer->lines_->tree.get(lineNumber, {});
+  Lines::Tree::Iterator treeIterator = buffer_->lines_->tree.get(lineNumber_, {});
   if (!treeIterator.finished()) {
     lineIterator.reset(new Lines::LineIterator(treeIterator));
   }
   return {std::move(lineIterator)};
 }
+
+int Buffer::lineCount() { return lines_->tree.totalDelta(); }
 
 Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
   return {this, lineNumber};

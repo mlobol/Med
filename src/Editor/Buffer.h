@@ -28,14 +28,14 @@ public:
   
   class IterableFromLineNumber {
   public:
-    IterableFromLineNumber(Buffer* buffer, int lineNumber) : buffer(buffer), lineNumber(lineNumber) {}
+    IterableFromLineNumber(Buffer* buffer, int lineNumber) : buffer_(buffer), lineNumber_(lineNumber) {}
     
     Iterator begin();
     Iterator end() { return {}; }
   
   private:
-    Buffer* buffer;
-    int lineNumber;
+    Buffer* buffer_;
+    int lineNumber_;
   };
 
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
@@ -44,6 +44,7 @@ public:
   
   const QString& name() { return name_; }
   
+  int lineCount();
   IterableFromLineNumber iterateFromLineNumber(int lineNumber);
   
 private:
@@ -63,4 +64,3 @@ private:
 }  // namespace Med
 
 #endif // MED_EDITOR_BUFFER_H
-
