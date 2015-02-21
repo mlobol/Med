@@ -7,6 +7,7 @@ int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   QtGui::MainWindow foo;
   foo.showMaximized();
+  foo.Open("Makefile");
   return app.exec();
 }
   

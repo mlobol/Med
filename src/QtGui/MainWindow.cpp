@@ -24,14 +24,17 @@ MainWindow::MainWindow() : tabWidget(this) {
   QMenu* fileMenu = menuBar()->addMenu("File");
   addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
   addNewAction("Open", QKeySequence::Open, fileMenu, [this]() {
-    Editor::Buffer* buffer = buffers_.Open(QFileDialog::getOpenFileName().toStdString());
-    Editor::View* view = views_.newView(buffer);
-    viewWidgets.push_back(new View(view));
-    tabWidget.addTab(viewWidgets.back(), view->buffer()->name());
+    Open(QFileDialog::getOpenFileName().toStdString());
   });
 }
 
 MainWindow::~MainWindow() {}
+
+void MainWindow::Open(const std::string& path) {
+  Editor::View* view = views_.newView(buffers_.Open(path));
+  viewWidgets.push_back(new View(view));
+  tabWidget.addTab(viewWidgets.back(), view->buffer()->name());
+}
 
 }  // namespace QtGui
 }  // namespace Med

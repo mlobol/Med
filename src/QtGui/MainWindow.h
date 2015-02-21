@@ -3,6 +3,7 @@
 
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QTabWidget>
+#include <string>
 
 #include "View.h"
 #include "Editor/Buffers.h"
@@ -15,6 +16,8 @@ class MainWindow : public QMainWindow {
 public:
   MainWindow();
   virtual ~MainWindow();
+  
+  void Open(const std::string& path);
   
 private:
   Editor::Buffers buffers_;
