@@ -1,9 +1,11 @@
 #include "View.h"
 
+#include <QtCore/QEvent>
 #include <QtGui/QPainter>
-#include <QtWidgets/QVBoxLayout>
+#include <QtGui/QTextLine>
 #include <QtWidgets/QAbstractScrollArea>
 #include <QtWidgets/QScrollBar>
+#include <QtWidgets/QVBoxLayout>
 
 namespace Med {
 namespace QtGui {
@@ -13,30 +15,66 @@ public:
   Lines(QWidget* parent, View* view) : QWidget(parent), view_(view) {
     // Not sure if this is needed. Seems like it should be but also to work without it.
     setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
+    setFocusPolicy(Qt::StrongFocus);
     setTextFont({});
+  }
+  
+  bool event(QEvent* event) override {
+    if (event->type() == QEvent::KeyPress) {
+      QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
+      if (keyEvent->key() == Qt::Key_Tab) {
+        keyPressEvent(keyEvent);
+        return true;
+      }
+    }
+    return QWidget::event(event);
+  }
+  
+  void resetPage() {
+    const int leading = textFontMetrics_->leading();
+    QPointF linePos(0, 0);
+    page_.clear();
+    QTextOption textOption;
+    textOption.setWrapMode(QTextOption::NoWrap);
+    for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(view_->view_->pageTopLineNumber())) {
+      page_.emplace_back(new QTextLayout(*line.content, *textFont_));
+      QTextLayout* layout = page_.back().get();
+      layout->setTextOption(textOption);
+      layout->setCacheEnabled(true);
+      layout->beginLayout();
+      QTextLine layoutLine = layout->createLine();
+      layoutLine.setLineWidth(line.content->size());
+      linePos.ry() += leading;
+      layoutLine.setPosition(linePos);
+      layout->endLayout();
+      linePos.ry() += layoutLine.height();
+      if (linePos.y() >= height()) break;
+    }
   }
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    QPoint textPos(0, textFontMetrics->leading() + textFontMetrics->height());
-    for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(view_->view_->pageTopLineNumber())) {
-      painter.drawText(textPos, *line.content);
-      textPos.ry() += textFontMetrics->lineSpacing();
+    for (auto& layout : page_) {
+      layout->draw(&painter, {0, 0});
     }
     QWidget::paintEvent(event);
   }
   
+  void keyPressEvent(QKeyEvent* event) override {
+  }
+  
   void setTextFont(const QFont& font) {
-    textFont.reset(new QFont(font));
-    textFontMetrics.reset(new QFontMetrics(*textFont));
+    textFont_.reset(new QFont(font));
+    textFontMetrics_.reset(new QFontMetrics(*textFont_));
   }
   
   int linesPerPage() {
-    return height() / textFontMetrics->lineSpacing();
+    return height() / textFontMetrics_->lineSpacing();
   }
   
-  std::unique_ptr<QFont> textFont;
-  std::unique_ptr<QFontMetrics> textFontMetrics;
+  std::unique_ptr<QFont> textFont_;
+  std::unique_ptr<QFontMetrics> textFontMetrics_;
+  std::vector<std::unique_ptr<QTextLayout>> page_;
   
   View* view_;
 };
@@ -46,7 +84,7 @@ public:
   ScrollArea(QWidget* parent, View* view): QAbstractScrollArea(parent), view_(view) {
     QObject::connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] (int value) {
       view_->view_->setPageTopLineNumber(value);
-      if (view_->lines_) view_->lines_->update();
+      if (view_->lines_) view_->lines_->resetPage();
     });
   }
 
