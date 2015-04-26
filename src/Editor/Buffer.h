@@ -19,6 +19,11 @@ class IOException : public std::runtime_error {
 
 class Buffer {
 public:
+  struct Point {
+    int lineNumber;
+    int columnNumber;
+  };
+  
   struct Line {
     int lineNumber;
     QString* content;

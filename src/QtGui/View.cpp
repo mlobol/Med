@@ -54,13 +54,34 @@ public:
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
+    Editor::Buffer::Point insertionPoint = view_->view_->insertionPoint();
+    int lineNumber = view_->view_->pageTopLineNumber() - 1;
     for (auto& layout : page_) {
+      ++lineNumber;
       layout->draw(&painter, {0, 0});
+      if (lineNumber == insertionPoint.lineNumber) {
+        layout->drawCursor(&painter, {0, 0}, insertionPoint.columnNumber);
+      }
     }
     QWidget::paintEvent(event);
   }
   
   void keyPressEvent(QKeyEvent* event) override {
+  }
+  
+  void mousePressEvent(QMouseEvent* event) override {
+    if (event->button() == Qt::LeftButton) {
+      int lineNumber = view_->view_->pageTopLineNumber() - 1;
+      for (auto& layout : page_) {
+        ++lineNumber;
+        if (layout->boundingRect().contains(event->pos())) {
+          int columnNumber = layout->lineAt(0).xToCursor(event->x());
+          view_->view_->setInsertionPoint({lineNumber, columnNumber});
+          update();
+          break;
+        }
+      }
+    }
   }
   
   void setTextFont(const QFont& font) {
@@ -93,6 +114,11 @@ public:
     view_->lines_->paintEvent(event);
   }
   
+  void mousePressEvent(QMouseEvent* event) override {
+    // Don't know why I have to call this explicitly.
+    view_->lines_->mousePressEvent(event);
+  }
+  
   void resizeEvent(QResizeEvent* event) override {
     verticalScrollBar()->setPageStep(view_->lines_->linesPerPage());
     linesPerPageOrLineCountUpdated();
@@ -100,6 +126,7 @@ public:
   
   void linesPerPageOrLineCountUpdated() {
     verticalScrollBar()->setRange(1, std::max(0, view_->view_->buffer()->lineCount() - view_->lines_->linesPerPage()));
+    if (view_->lines_) view_->lines_->resetPage();
   }
   
   View* view_;
