@@ -1,6 +1,7 @@
 #include "View.h"
 
 #include <QtCore/QEvent>
+#include <QtCore/QTimer>
 #include <QtGui/QPainter>
 #include <QtGui/QTextLine>
 #include <QtWidgets/QAbstractScrollArea>
@@ -17,6 +18,11 @@ public:
     setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
     setFocusPolicy(Qt::StrongFocus);
     setTextFont({});
+    cursorBlinkingTimer_ = new QTimer(this);
+    QObject::connect(cursorBlinkingTimer_, &QTimer::timeout, this, [this] () {
+      cursorOn_ = !cursorOn_;
+      update();
+    });
   }
   
   bool event(QEvent* event) override {
@@ -59,8 +65,8 @@ public:
     for (auto& layout : page_) {
       ++lineNumber;
       layout->draw(&painter, {0, 0});
-      if (lineNumber == insertionPoint.lineNumber) {
-        layout->drawCursor(&painter, {0, 0}, insertionPoint.columnNumber);
+      if (cursorOn_ && lineNumber == insertionPoint.lineNumber && hasFocus()) {
+        layout->drawCursor(&painter, {0, 0}, insertionPoint.columnNumber, 2);
       }
     }
     QWidget::paintEvent(event);
@@ -77,12 +83,23 @@ public:
         if (layout->boundingRect().contains(event->pos())) {
           int columnNumber = layout->lineAt(0).xToCursor(event->x());
           view_->view_->setInsertionPoint({lineNumber, columnNumber});
+          if (hasFocus()) {
+            // Start a new blink so that you can immediately see where the insertion point landed.
+            cursorOn_ = true;
+            startBlink();
+          }
           update();
           break;
         }
       }
     }
   }
+  
+  void startBlink() { cursorBlinkingTimer_->start(500); }
+  
+  void focusInEvent(QFocusEvent* event) override { startBlink(); }
+  
+  void focusOutEvent(QFocusEvent* event) override { cursorBlinkingTimer_->stop(); }
   
   void setTextFont(const QFont& font) {
     textFont_.reset(new QFont(font));
@@ -96,8 +113,11 @@ public:
   std::unique_ptr<QFont> textFont_;
   std::unique_ptr<QFontMetrics> textFontMetrics_;
   std::vector<std::unique_ptr<QTextLayout>> page_;
+
+  bool cursorOn_ = false;
+  QTimer* cursorBlinkingTimer_ = nullptr;
   
-  View* view_;
+  View* view_ = nullptr;
 };
   
 class View::ScrollArea : public QAbstractScrollArea {
@@ -117,6 +137,16 @@ public:
   void mousePressEvent(QMouseEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->mousePressEvent(event);
+  }
+  
+  void focusInEvent(QFocusEvent* event) override {
+    // Don't know why I have to call this explicitly.
+    view_->lines_->focusInEvent(event);
+  }
+  
+  void focusOutEvent(QFocusEvent* event) override {
+    // Don't know why I have to call this explicitly.
+    view_->lines_->focusOutEvent(event);
   }
   
   void resizeEvent(QResizeEvent* event) override {
