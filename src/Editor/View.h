@@ -21,13 +21,14 @@ public:
   int pageTopLineNumber() { return pageTopLineNumber_; }
   void setPageTopLineNumber(int pageTopLineNumber) { pageTopLineNumber_ = pageTopLineNumber; }
   
-  Buffer::Point insertionPoint() { return insertionPoint_; }
-  void setInsertionPoint(Buffer::Point point) { insertionPoint_ = point; }
+  Buffer::CachedPoint* insertionPoint() { return &insertionPoint_; }
+  
+  bool insert(const QString& text);
   
 private:
   Buffer* buffer_;
   int pageTopLineNumber_ = 1;
-  Buffer::Point insertionPoint_;
+  Buffer::CachedPoint insertionPoint_;
 };
 
 }  // namespace Editor

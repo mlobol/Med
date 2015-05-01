@@ -73,5 +73,24 @@ Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
   return {this, lineNumber};
 }
 
+bool Buffer::insert(CachedPoint* point, const QString& text) {
+  QString* line = point->line();
+  if (!line) return false;
+  line->insert(point->point().columnNumber, text);
+  ++contentVersion_;
+  return true;
+}
+
+QString* Buffer::CachedPoint::line() {
+  if (!buffer_) return nullptr;
+  if (buffer_->contentVersion() == contentVersion_) return cachedLine_;
+  cachedLine_ = nullptr;
+  for (Line line : buffer_->iterateFromLineNumber(point_.lineNumber)) {
+    cachedLine_ = line.content;
+    break;
+  }
+  return cachedLine_;
+}
+
 }  // namespace Editor
 }  // namespace Med

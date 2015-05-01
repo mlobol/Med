@@ -60,7 +60,7 @@ public:
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    Editor::Buffer::Point insertionPoint = view_->view_->insertionPoint();
+    Editor::Buffer::Point insertionPoint = view_->view_->insertionPoint()->point();
     int lineNumber = view_->view_->pageTopLineNumber() - 1;
     for (auto& layout : page_) {
       ++lineNumber;
@@ -73,6 +73,14 @@ public:
   }
   
   void keyPressEvent(QKeyEvent* event) override {
+    QString text = event->text();
+    if (!text.isEmpty()) {
+      if (!view_->view_->insert(text)) return;
+      // TODO: add helper method to get layout for a given line and update only that one.
+      resetPage();
+      handleVisibleUpdate();
+    }
+    QWidget::keyPressEvent(event);
   }
   
   void mousePressEvent(QMouseEvent* event) override {
@@ -80,26 +88,33 @@ public:
       int lineNumber = view_->view_->pageTopLineNumber() - 1;
       for (auto& layout : page_) {
         ++lineNumber;
+        // TODO: this should only consider y coordinates so that clicking after the end of the line puts the cursor at the end of the line.
+        // Also, clicking after the last line should put the cursor in the last line.
         if (layout->boundingRect().contains(event->pos())) {
           int columnNumber = layout->lineAt(0).xToCursor(event->x());
-          view_->view_->setInsertionPoint({lineNumber, columnNumber});
-          if (hasFocus()) {
-            // Start a new blink so that you can immediately see where the insertion point landed.
-            cursorOn_ = true;
-            startBlink();
-          }
-          update();
+          view_->view_->insertionPoint()->setPoint({lineNumber, columnNumber});
+          handleVisibleUpdate();
           break;
         }
       }
     }
   }
   
-  void startBlink() { cursorBlinkingTimer_->start(500); }
+  void handleVisibleUpdate() {
+    update();
+    if (!hasFocus()) return;
+    // When something changes in the view we start a new blink of the cursor so that it's obvious where it is.
+    cursorOn_ = true;
+    cursorBlinkingTimer_->start(500);
+  }
   
-  void focusInEvent(QFocusEvent* event) override { startBlink(); }
+  void focusInEvent(QFocusEvent* event) override { handleVisibleUpdate(); }
   
-  void focusOutEvent(QFocusEvent* event) override { cursorBlinkingTimer_->stop(); }
+  void focusOutEvent(QFocusEvent* event) override {
+    cursorBlinkingTimer_->stop();
+    // The update will hide the cursor.
+    update();
+  }
   
   void setTextFont(const QFont& font) {
     textFont_.reset(new QFont(font));
@@ -132,6 +147,11 @@ public:
   void paintEvent(QPaintEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->paintEvent(event);
+  }
+  
+  void keyPressEvent(QKeyEvent* event) override {
+    // Don't know why I have to call this explicitly.
+    view_->lines_->keyPressEvent(event);
   }
   
   void mousePressEvent(QMouseEvent* event) override {
