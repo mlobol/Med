@@ -19,56 +19,27 @@ class IOException : public std::runtime_error {
 
 class Buffer {
 public:
-  struct Point {
-    int lineNumber = 0;
-    int columnNumber = 0;
-  };
-  
-  class CachedPoint {
-  public:
-    CachedPoint(Buffer* buffer) : buffer_(buffer) {}
-    
-    void setColumnNumber(int columnNumber) { point_.columnNumber = columnNumber; }
-    
-    const Point& point() const { return point_; }
-    void setPoint(const Point& point) {
-      point_ = point;
-      invalidateCache();
-    }
-    
-    QString* line();
-    
-  private:
-    void invalidateCache() {
-      cachedLine_ = nullptr;
-      contentVersion_ = -1;
-    }
-    
-    Buffer* const buffer_ = nullptr;
-    Point point_;
-    QString* cachedLine_ = nullptr;
-    int64_t contentVersion_ = -1;
-  };
-  
+  class Point;
+
   struct Line {
     int lineNumber;
     QString* content;
   };
-  
+
   typedef Util::IteratorHelper<Line> Iterator;
-  
+
   class IterableFromLineNumber {
   public:
     IterableFromLineNumber(Buffer* buffer, int lineNumber) : buffer_(buffer), lineNumber_(lineNumber) {}
     
     Iterator begin();
     Iterator end() { return {}; }
-  
+
   private:
     Buffer* buffer_;
     int lineNumber_;
   };
-
+  
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
   
   ~Buffer();
@@ -77,8 +48,6 @@ public:
   
   int lineCount();
   IterableFromLineNumber iterateFromLineNumber(int lineNumber);
-  
-  bool insert(CachedPoint* point, const QString& text);
   
   int64_t contentVersion() const { return contentVersion_; }
   
@@ -94,6 +63,35 @@ private:
   std::unique_ptr<Lines> lines_;
   int64_t contentVersion_ = 0;
   QString name_;
+};
+
+class Buffer::Point {
+public:
+  Point(Buffer* buffer) : buffer_(buffer) {}
+  
+  void setColumnNumber(int columnNumber) { columnNumber_ = columnNumber; }
+  void setLineNumber(int lineNumber) {
+    lineNumber_ = lineNumber;
+    invalidateCache();
+  }
+
+  int columnNumber() const { return columnNumber_; }
+  int lineNumber() const { return lineNumber_; }
+  QString* line();
+
+  bool insertBefore(const QString& text);
+ 
+private:
+  void invalidateCache() {
+    cachedLine_ = nullptr;
+    contentVersion_ = -1;
+  }
+  
+  Buffer* const buffer_ = nullptr;
+  int columnNumber_ = 0;
+  int lineNumber_ = 0;
+  QString* cachedLine_ = nullptr;
+  int64_t contentVersion_ = -1;
 };
 
 }  // namespace Editor

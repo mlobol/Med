@@ -73,19 +73,20 @@ Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
   return {this, lineNumber};
 }
 
-bool Buffer::insert(CachedPoint* point, const QString& text) {
-  QString* line = point->line();
-  if (!line) return false;
-  line->insert(point->point().columnNumber, text);
-  ++contentVersion_;
+bool Buffer::Point::insertBefore(const QString& text) {
+  QString* lineContent = line();
+  if (!lineContent) return false;
+  lineContent->insert(columnNumber_, text);
+  columnNumber_ += text.size();
+  ++buffer_->contentVersion_;
   return true;
 }
 
-QString* Buffer::CachedPoint::line() {
+QString* Buffer::Point::line() {
   if (!buffer_) return nullptr;
   if (buffer_->contentVersion() == contentVersion_) return cachedLine_;
   cachedLine_ = nullptr;
-  for (Line line : buffer_->iterateFromLineNumber(point_.lineNumber)) {
+  for (Line line : buffer_->iterateFromLineNumber(lineNumber_)) {
     cachedLine_ = line.content;
     break;
   }

@@ -47,7 +47,7 @@ public:
       QTextLayout* layout = page_.back().get();
       top += leading;
       updateLayout(layout, top);
-      if (line.lineNumber == lineNumberForInsertionPoint()) updateCursorBounds(layout);
+      if (line.lineNumber == insertionPoint().lineNumber()) updateCursorBounds(layout);
       top = layout->boundingRect().bottom();
       if (top >= height()) break;
     }
@@ -67,19 +67,18 @@ public:
   
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    Editor::Buffer::Point insertionPoint = view_->view_->insertionPoint()->point();
     int lineNumber = view_->view_->pageTopLineNumber() - 1;
     for (auto& layout : page_) {
       ++lineNumber;
       layout->draw(&painter, {0, 0});
-      if (cursorOn_ && lineNumber == insertionPoint.lineNumber && hasFocus()) {
-        layout->drawCursor(&painter, {0, 0}, insertionPoint.columnNumber, 2);
+      if (cursorOn_ && lineNumber == insertionPoint().lineNumber() && hasFocus()) {
+        layout->drawCursor(&painter, {0, 0}, insertionPoint().columnNumber(), 2);
       }
     }
     QWidget::paintEvent(event);
   }
   
-  int lineNumberForInsertionPoint() { return view_->view_->insertionPoint()->point().lineNumber; }
+  Editor::Buffer::Point& insertionPoint() { return view_->view_->insertionPoint_; }
   
   QTextLayout* layoutForLineNumber(int lineNumber) {
     int layoutIndex = lineNumber - view_->view_->pageTopLineNumber();
@@ -90,37 +89,40 @@ public:
   void updateCursorBounds(QTextLayout* layoutForInsertionPoint) {
     cursorBounds_ = layoutForInsertionPoint->boundingRect().toAlignedRect();
     cursorBounds_.setLeft(layoutForInsertionPoint->lineAt(0).cursorToX(
-      view_->view_->insertionPoint()->point().columnNumber));
+      insertionPoint().columnNumber()));
     cursorBounds_.setWidth(2);
+  }
+  
+  void handleUpdateOfInsertionPointLine() {
+    QTextLayout* layout = layoutForLineNumber(insertionPoint().lineNumber());
+    if (!layout) return;
+    int oldHeight = layout->boundingRect().height();
+    int top = layout->boundingRect().top();
+    QString* content = nullptr;
+    for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(insertionPoint().lineNumber())) {
+      content = line.content;
+      break;
+    }
+    if (content) layout->setText(content ? *content : "");
+    updateLayout(layout, top);
+    if (oldHeight == layout->boundingRect().height()) {
+      updateCursorBounds(layout);
+      QRect bounds = layout->boundingRect().toAlignedRect();
+      bounds.setLeft(0);
+      bounds.setRight(width());
+      handleVisibleUpdate(bounds);
+    } else {
+      // Line height changed, fall back to resetting page.
+      resetPage();
+      handleVisibleUpdate(rect());
+    }
   }
   
   void keyPressEvent(QKeyEvent* event) override {
     QString text = event->text();
     if (!text.isEmpty()) {
-      if (!view_->view_->insert(text)) return;
-      int lineNumber = lineNumberForInsertionPoint();
-      QTextLayout* layout = layoutForLineNumber(lineNumber);
-      if (!layout) return;
-      int oldHeight = layout->boundingRect().height();
-      int top = layout->boundingRect().top();
-      QString* content = nullptr;
-      for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(lineNumber)) {
-        content = line.content;
-        break;
-      }
-      if (content) layout->setText(content ? *content : "");
-      updateLayout(layout, top);
-      if (oldHeight == layout->boundingRect().height()) {
-        updateCursorBounds(layout);
-        QRect bounds = layout->boundingRect().toAlignedRect();
-        bounds.setLeft(0);
-        bounds.setRight(width());
-        handleVisibleUpdate(bounds);
-      } else {
-        // Line height changed, fall back to resetting page.
-        resetPage();
-        handleVisibleUpdate(rect());
-      }
+      if (insertionPoint().insertBefore(text)) handleUpdateOfInsertionPointLine();
+      return;
     }
     QWidget::keyPressEvent(event);
   }
@@ -135,8 +137,8 @@ public:
         if (layout->boundingRect().bottom() >= event->y()) break;
       }
       if (!layoutForClick) return;
-      int columnNumber = layoutForClick->lineAt(0).xToCursor(event->x());
-      view_->view_->insertionPoint()->setPoint({lineNumber, columnNumber});
+      insertionPoint().setLineNumber(lineNumber);
+      insertionPoint().setColumnNumber(layoutForClick->lineAt(0).xToCursor(event->x()));
       update(cursorBounds_);
       updateCursorBounds(layoutForClick);
       handleVisibleUpdate(cursorBounds_);
