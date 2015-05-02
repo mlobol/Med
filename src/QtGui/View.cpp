@@ -21,7 +21,7 @@ public:
     cursorBlinkingTimer_ = new QTimer(this);
     QObject::connect(cursorBlinkingTimer_, &QTimer::timeout, this, [this] () {
       cursorOn_ = !cursorOn_;
-      update();
+      update(cursorBounds_);
     });
   }
   
@@ -40,22 +40,29 @@ public:
     const int leading = textFontMetrics_->leading();
     QPointF linePos(0, 0);
     page_.clear();
-    QTextOption textOption;
-    textOption.setWrapMode(QTextOption::NoWrap);
+    int top = 0;
+    cursorBounds_ = {};
     for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(view_->view_->pageTopLineNumber())) {
       page_.emplace_back(new QTextLayout(*line.content, *textFont_));
       QTextLayout* layout = page_.back().get();
-      layout->setTextOption(textOption);
-      layout->setCacheEnabled(true);
-      layout->beginLayout();
-      QTextLine layoutLine = layout->createLine();
-      layoutLine.setLineWidth(line.content->size());
-      linePos.ry() += leading;
-      layoutLine.setPosition(linePos);
-      layout->endLayout();
-      linePos.ry() += layoutLine.height();
-      if (linePos.y() >= height()) break;
+      top += leading;
+      updateLayout(layout, top);
+      if (line.lineNumber == lineNumberForInsertionPoint()) updateCursorBounds(layout);
+      top = layout->boundingRect().bottom();
+      if (top >= height()) break;
     }
+  }
+  
+  void updateLayout(QTextLayout* layout, int top) {
+    QTextOption textOption;
+    textOption.setWrapMode(QTextOption::NoWrap);
+    layout->setTextOption(textOption);
+    layout->setCacheEnabled(true);
+    layout->beginLayout();
+    QTextLine layoutLine = layout->createLine();
+    layoutLine.setLineWidth(layout->text().size());
+    layoutLine.setPosition(QPointF(0, top));
+    layout->endLayout();
   }
   
   void paintEvent(QPaintEvent* event) override {
@@ -72,13 +79,48 @@ public:
     QWidget::paintEvent(event);
   }
   
+  int lineNumberForInsertionPoint() { return view_->view_->insertionPoint()->point().lineNumber; }
+  
+  QTextLayout* layoutForLineNumber(int lineNumber) {
+    int layoutIndex = lineNumber - view_->view_->pageTopLineNumber();
+    if (layoutIndex < 0 || layoutIndex >= page_.size()) return nullptr;
+    return page_.at(layoutIndex).get();
+  }
+  
+  void updateCursorBounds(QTextLayout* layoutForInsertionPoint) {
+    cursorBounds_ = layoutForInsertionPoint->boundingRect().toAlignedRect();
+    cursorBounds_.setLeft(layoutForInsertionPoint->lineAt(0).cursorToX(
+      view_->view_->insertionPoint()->point().columnNumber));
+    cursorBounds_.setWidth(2);
+  }
+  
   void keyPressEvent(QKeyEvent* event) override {
     QString text = event->text();
     if (!text.isEmpty()) {
       if (!view_->view_->insert(text)) return;
-      // TODO: add helper method to get layout for a given line and update only that one.
-      resetPage();
-      handleVisibleUpdate();
+      int lineNumber = lineNumberForInsertionPoint();
+      QTextLayout* layout = layoutForLineNumber(lineNumber);
+      if (!layout) return;
+      int oldHeight = layout->boundingRect().height();
+      int top = layout->boundingRect().top();
+      QString* content = nullptr;
+      for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(lineNumber)) {
+        content = line.content;
+        break;
+      }
+      if (content) layout->setText(content ? *content : "");
+      updateLayout(layout, top);
+      if (oldHeight == layout->boundingRect().height()) {
+        updateCursorBounds(layout);
+        QRect bounds = layout->boundingRect().toAlignedRect();
+        bounds.setLeft(0);
+        bounds.setRight(width());
+        handleVisibleUpdate(bounds);
+      } else {
+        // Line height changed, fall back to resetting page.
+        resetPage();
+        handleVisibleUpdate(rect());
+      }
     }
     QWidget::keyPressEvent(event);
   }
@@ -86,34 +128,37 @@ public:
   void mousePressEvent(QMouseEvent* event) override {
     if (event->button() == Qt::LeftButton) {
       int lineNumber = view_->view_->pageTopLineNumber() - 1;
+      QTextLayout* layoutForClick = nullptr;
       for (auto& layout : page_) {
         ++lineNumber;
-        // TODO: this should only consider y coordinates so that clicking after the end of the line puts the cursor at the end of the line.
-        // Also, clicking after the last line should put the cursor in the last line.
-        if (layout->boundingRect().contains(event->pos())) {
-          int columnNumber = layout->lineAt(0).xToCursor(event->x());
-          view_->view_->insertionPoint()->setPoint({lineNumber, columnNumber});
-          handleVisibleUpdate();
-          break;
-        }
+        layoutForClick = layout.get();
+        if (layout->boundingRect().bottom() >= event->y()) break;
       }
+      if (!layoutForClick) return;
+      int columnNumber = layoutForClick->lineAt(0).xToCursor(event->x());
+      view_->view_->insertionPoint()->setPoint({lineNumber, columnNumber});
+      update(cursorBounds_);
+      updateCursorBounds(layoutForClick);
+      handleVisibleUpdate(cursorBounds_);
     }
   }
   
-  void handleVisibleUpdate() {
-    update();
+  void handleVisibleUpdate(QRect bounds) {
+    update(bounds);
     if (!hasFocus()) return;
     // When something changes in the view we start a new blink of the cursor so that it's obvious where it is.
     cursorOn_ = true;
     cursorBlinkingTimer_->start(500);
   }
   
-  void focusInEvent(QFocusEvent* event) override { handleVisibleUpdate(); }
+  void focusInEvent(QFocusEvent* event) override {
+    handleVisibleUpdate(cursorBounds_);
+  }
   
   void focusOutEvent(QFocusEvent* event) override {
     cursorBlinkingTimer_->stop();
     // The update will hide the cursor.
-    update();
+    update(cursorBounds_);
   }
   
   void setTextFont(const QFont& font) {
@@ -131,6 +176,7 @@ public:
 
   bool cursorOn_ = false;
   QTimer* cursorBlinkingTimer_ = nullptr;
+  QRect cursorBounds_;
   
   View* view_ = nullptr;
 };
