@@ -73,15 +73,6 @@ Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
   return {this, lineNumber};
 }
 
-bool Buffer::Point::insertBefore(const QString& text) {
-  QString* lineContent = line();
-  if (!lineContent) return false;
-  lineContent->insert(columnNumber_, text);
-  columnNumber_ += text.size();
-  ++buffer_->contentVersion_;
-  return true;
-}
-
 QString* Buffer::Point::line() {
   if (!buffer_) return nullptr;
   if (buffer_->contentVersion() == contentVersion_) return cachedLine_;
@@ -91,6 +82,33 @@ QString* Buffer::Point::line() {
     break;
   }
   return cachedLine_;
+}
+
+bool Buffer::Point::insertBefore(const QString& text) {
+  QString* lineContent = line();
+  if (!lineContent) return false;
+  lineContent->insert(columnNumber_, text);
+  columnNumber_ += text.size();
+  ++buffer_->contentVersion_;
+  return true;
+}
+
+bool Buffer::Point::insertLineBreakBefore() {
+  QString* currentLine = line();
+  auto node = new Lines::Tree::Node();
+  Util::DRBTreeDefs::OperationOptions options;
+  options.repeats = true;
+  buffer_->lines_->tree.attach(node, lineNumber_ + 1, options);
+  node->setDelta(1);
+  if (currentLine) {
+    node->value = currentLine->right(currentLine->size() - columnNumber_);
+    currentLine->truncate(columnNumber_);
+  }
+  ++lineNumber_;
+  columnNumber_ = 0;
+  invalidateCache();
+  ++buffer_->contentVersion_;
+  return true;
 }
 
 }  // namespace Editor

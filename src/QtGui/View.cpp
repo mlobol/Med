@@ -119,10 +119,19 @@ public:
   }
   
   void keyPressEvent(QKeyEvent* event) override {
-    QString text = event->text();
-    if (!text.isEmpty()) {
-      if (insertionPoint().insertBefore(text)) handleUpdateOfInsertionPointLine();
-      return;
+    switch (event->key()) {
+      case Qt::Key_Return:
+        if (insertionPoint().insertLineBreakBefore()) {
+          resetPage();
+          handleVisibleUpdate(rect());
+        }
+        return;
+      default:
+        QString text = event->text();
+        if (!text.isEmpty()) {
+          if (insertionPoint().insertBefore(text)) handleUpdateOfInsertionPointLine();
+          return;
+        }
     }
     QWidget::keyPressEvent(event);
   }

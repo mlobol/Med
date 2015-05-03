@@ -80,6 +80,7 @@ public:
   QString* line();
 
   bool insertBefore(const QString& text);
+  bool insertLineBreakBefore();
  
 private:
   void invalidateCache() {
