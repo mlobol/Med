@@ -89,8 +89,9 @@ public:
   void updateCursorBounds(QTextLayout* layoutForInsertionPoint) {
     cursorBounds_ = layoutForInsertionPoint->boundingRect().toAlignedRect();
     cursorBounds_.setLeft(layoutForInsertionPoint->lineAt(0).cursorToX(
-      insertionPoint().columnNumber()));
-    cursorBounds_.setWidth(2);
+      insertionPoint().columnNumber()) - 1);
+    // Needs to be one larger than the width passed to drawCursor to account for rounding.
+    cursorBounds_.setWidth(3);
   }
   
   void handleUpdateOfInsertionPointLine() {
