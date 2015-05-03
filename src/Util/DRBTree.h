@@ -176,7 +176,6 @@ public:
   void attach(Node* node, const Key& key, const OperationOptions& options) {
     if (node->isAttached()) throw new Error("The node is already attached.");
     node->color = NodeColor::RED;
-    node->delta = zeroDelta;
     /** Both the key and the predecessor of a subtree are those of its leftmost element. */ 
     struct Subtree { Key key; Node* predecessor; };
     Subtree subtree{zeroKey + extremeDelta(options.deltaSide), nullptr};
@@ -248,29 +247,28 @@ public:
 
     node->tree = this;
     root->color = NodeColor::BLACK;
-    
-    if (subtree.predecessor != nullptr) {
+
+    // Set the node's delta.
+    if (subtree.predecessor) {
       // At the leaf, subtree 
       if (key > subtree.key) {
         // This means we are at the biggest end of the tree and we're increasing the tree's total delta.
-        node->delta = zeroDelta;
-        subtree.predecessor->delta = key - subtree.key;
+        node->setDelta(zeroDelta);
+        subtree.predecessor->setDelta(key - subtree.key);
       } else {
         // We have a successor. We split the predecessor's previous delta between the new node and the predecessor, so the new node's key is as requested and the successor's key doesn't change.
-        node->delta = subtree.key - key;
-        subtree.predecessor->delta -= node->delta;
+        node->setDelta(subtree.key - key);
+        subtree.predecessor->setDelta(subtree.predecessor->delta - node->delta);
       }
-      subtree.predecessor->updateSubtreeDelta();
     } else {
       // Inserting at the tree's leftmost end.
       if (root == node)
         // First node in the tree.
-        node->delta = zeroDelta;
+        node->setDelta(zeroDelta);
       else
-        node->delta = zeroKey + extremeDelta(options.deltaSide) - key;
+        node->setDelta(zeroKey + extremeDelta(options.deltaSide) - key);
       extremeDelta(options.deltaSide) = key - zeroKey;
     }
-    node->updateSubtreeDelta();
   }
   
 private:
@@ -331,12 +329,6 @@ private:
       if (leftChild != nullptr && rightChild != nullptr)
         throw InternalError("Node has both children!");
       return leftChild != nullptr ? leftChild : rightChild;
-    }
-    
-    /** Set the parent of any children to @a parent.
-     */
-    void Reparent(Node* parent) {
-      for (Node* child : *this) child->parent = parent;
     }
     
     template<typename NodeType>
@@ -577,7 +569,13 @@ public:
   
   Delta nodePlusSubtreeDelta(Side side) { return delta + children.subtreeDelta(side); }
   
-  /** Recompute this.subtreeDelta from the node's delta and the children's subtree deltas, for this node and all its ancestors, until an ancestor with an unchanged subtree delta is found. */
+  /** Set the delta for this node. Recomputes subtree delta. */
+  void setDelta(Delta newDelta) {
+    delta = newDelta;
+    updateSubtreeDelta();
+  }
+      
+  /** Recompute subtreeDelta from the node's delta and the children's subtree deltas, for this node and all its ancestors, until an ancestor with an unchanged subtree delta is found. */
   void updateSubtreeDelta() {
     for (Node* node = this; node != nullptr; node = node->parent) {
       const Delta newSubtreeDelta = node->delta + node->children.totalSubtreeDeltas();
