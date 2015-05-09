@@ -59,6 +59,7 @@ private:
   Buffer();
   
   void InitFromStream(QTextStream* stream, const QString& name);
+  QString* insertLine(int lineNumber);
   
   std::unique_ptr<Lines> lines_;
   int64_t contentVersion_ = 0;
@@ -69,19 +70,21 @@ class Buffer::Point {
 public:
   Point(Buffer* buffer) : buffer_(buffer) {}
   
-  void setColumnNumber(int columnNumber) { columnNumber_ = columnNumber; }
-  void setLineNumber(int lineNumber) {
-    lineNumber_ = lineNumber;
-    invalidateCache();
-  }
+  bool setColumnNumber(int columnNumber);
+  void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
   int lineNumber() const { return lineNumber_; }
   QString* line();
 
+  bool moveLeft();
+  bool moveRight();
+ 
   bool insertBefore(const QString& text);
   bool insertLineBreakBefore();
- 
+  
+  bool deleteCharBefore();
+  
 private:
   void invalidateCache() {
     cachedLine_ = nullptr;

@@ -37,15 +37,22 @@ Buffer::~Buffer() {}
 
 void Buffer::InitFromStream(QTextStream* stream, const QString& name) {
   while (true) {
-    auto node = std::make_unique<Lines::Tree::Node>();
-    node->value = stream->readLine();
-    if (node->value.isNull()) break;
-    int lineNumber = lines_->tree.extreme(Util::DRBTreeDefs::Side::RIGHT, {})->key + 1;
-    lines_->tree.attach(node.release(), lineNumber, {});
+    QString line = stream->readLine();
+    if (line.isNull()) break;
+    *insertLine(lineCount()) = line;
   }
   name_ = name;
 }
 
+QString* Buffer::insertLine(int lineNumber) {
+  auto node = new Lines::Tree::Node();
+  Util::DRBTreeDefs::OperationOptions options;
+  options.repeats = true;
+  lines_->tree.attach(node, lineNumber, options);
+  node->setDelta(1);
+  return &node->value;
+}
+  
 std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   QFile file(QString::fromStdString(filePath));
   if (!file.open(QFile::ReadOnly)) {
@@ -84,6 +91,41 @@ QString* Buffer::Point::line() {
   return cachedLine_;
 }
 
+bool Buffer::Point::setColumnNumber(int columnNumber) {
+  QString* currentLine = line();
+  if (!currentLine) return false;
+  columnNumber_ = qBound(0, columnNumber, currentLine->size());
+  return true;
+}
+
+void Buffer::Point::setLineNumber(int lineNumber) {
+  lineNumber_ = qBound(0, lineNumber, buffer_->lineCount());
+  invalidateCache();
+}
+
+bool Buffer::Point::moveLeft() {
+  if (columnNumber_ > 0) --columnNumber_;
+  else if (lineNumber_ > 0) {
+    --lineNumber_;
+    invalidateCache();
+    QString* currentLine = line();
+    if (currentLine) columnNumber_ = currentLine->size();
+  } else return false;
+  return true;
+}
+
+bool Buffer::Point::moveRight() {
+  QString* currentLine = line();
+  if (!currentLine) return false;
+  if (columnNumber_ < currentLine->size()) ++columnNumber_;
+  else if (lineNumber_ < buffer_->lineCount()) {
+    ++lineNumber_;
+    columnNumber_ = 0;
+    invalidateCache();
+  } else return false;
+  return true;
+}
+
 bool Buffer::Point::insertBefore(const QString& text) {
   QString* lineContent = line();
   if (!lineContent) return false;
@@ -95,18 +137,25 @@ bool Buffer::Point::insertBefore(const QString& text) {
 
 bool Buffer::Point::insertLineBreakBefore() {
   QString* currentLine = line();
-  auto node = new Lines::Tree::Node();
-  Util::DRBTreeDefs::OperationOptions options;
-  options.repeats = true;
-  buffer_->lines_->tree.attach(node, lineNumber_ + 1, options);
-  node->setDelta(1);
+  QString* newLine = buffer_->insertLine(lineNumber_ + 1);
   if (currentLine) {
-    node->value = currentLine->right(currentLine->size() - columnNumber_);
+    *newLine = currentLine->right(currentLine->size() - columnNumber_);
     currentLine->truncate(columnNumber_);
   }
   ++lineNumber_;
   columnNumber_ = 0;
   invalidateCache();
+  ++buffer_->contentVersion_;
+  return true;
+}
+
+bool Buffer::Point::deleteCharBefore() {
+  // TODO: should join lines
+  if (columnNumber_ == 0) return false;
+  QString* currentLine = line();
+  if (!currentLine) return false;
+  --columnNumber_;
+  currentLine->remove(columnNumber_, 1);
   ++buffer_->contentVersion_;
   return true;
 }

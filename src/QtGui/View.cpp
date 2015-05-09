@@ -94,7 +94,15 @@ public:
     cursorBounds_.setWidth(3);
   }
   
-  void handleUpdateOfInsertionPointLine() {
+  void updateAfterVisibleChange(QRect bounds) {
+    update(bounds);
+    if (!hasFocus()) return;
+    // When something changes in the view we start a new blink of the cursor so that it's obvious where it is.
+    cursorOn_ = true;
+    cursorBlinkingTimer_->start(500);
+  }
+  
+  void updateAfterInsertionLineModified() {
     QTextLayout* layout = layoutForLineNumber(insertionPoint().lineNumber());
     if (!layout) return;
     int oldHeight = layout->boundingRect().height();
@@ -111,26 +119,47 @@ public:
       QRect bounds = layout->boundingRect().toAlignedRect();
       bounds.setLeft(0);
       bounds.setRight(width());
-      handleVisibleUpdate(bounds);
+      updateAfterVisibleChange(bounds);
     } else {
       // Line height changed, fall back to resetting page.
       resetPage();
-      handleVisibleUpdate(rect());
+      updateAfterVisibleChange(rect());
     }
+  }
+  
+  void updateAfterCursorMoved() {
+    update(cursorBounds_);
+    QTextLayout* layoutForInsertionPoint = layoutForLineNumber(insertionPoint().lineNumber());
+    if (layoutForInsertionPoint) updateCursorBounds(layoutForInsertionPoint);
+    updateAfterVisibleChange(cursorBounds_);
+  }
+  
+  void updateAfterLineInsertedOrDeleted() {
+    resetPage();
+    updateAfterVisibleChange(rect());
   }
   
   void keyPressEvent(QKeyEvent* event) override {
     switch (event->key()) {
-      case Qt::Key_Return:
-        if (insertionPoint().insertLineBreakBefore()) {
-          resetPage();
-          handleVisibleUpdate(rect());
-        }
+      // Moving the cursor.
+      case Qt::Key_Left:
+        if (insertionPoint().moveLeft()) updateAfterCursorMoved();
         return;
+      case Qt::Key_Right:
+        if (insertionPoint().moveRight()) updateAfterCursorMoved();
+        return;
+      // Content changes that may insert or delete lines.
+      case Qt::Key_Return:
+        if (insertionPoint().insertLineBreakBefore()) updateAfterLineInsertedOrDeleted();
+        return;
+      case Qt::Key_Backspace:
+        if (insertionPoint().deleteCharBefore()) updateAfterLineInsertedOrDeleted();
+        return;
+      // Content changes that may not insert or delete lines.
       default:
         QString text = event->text();
         if (!text.isEmpty()) {
-          if (insertionPoint().insertBefore(text)) handleUpdateOfInsertionPointLine();
+          if (insertionPoint().insertBefore(text)) updateAfterInsertionLineModified();
           return;
         }
     }
@@ -149,22 +178,12 @@ public:
       if (!layoutForClick) return;
       insertionPoint().setLineNumber(lineNumber);
       insertionPoint().setColumnNumber(layoutForClick->lineAt(0).xToCursor(event->x()));
-      update(cursorBounds_);
-      updateCursorBounds(layoutForClick);
-      handleVisibleUpdate(cursorBounds_);
+      updateAfterCursorMoved();
     }
   }
   
-  void handleVisibleUpdate(QRect bounds) {
-    update(bounds);
-    if (!hasFocus()) return;
-    // When something changes in the view we start a new blink of the cursor so that it's obvious where it is.
-    cursorOn_ = true;
-    cursorBlinkingTimer_->start(500);
-  }
-  
   void focusInEvent(QFocusEvent* event) override {
-    handleVisibleUpdate(cursorBounds_);
+    updateAfterVisibleChange(cursorBounds_);
   }
   
   void focusOutEvent(QFocusEvent* event) override {
