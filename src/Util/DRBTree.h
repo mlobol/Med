@@ -88,8 +88,10 @@ public:
   class IteratorTemplate {
   public:
     typedef EntryType_ EntryType;
+    
+    IteratorTemplate() : entry{zeroKey, nullptr} {}
   
-    bool finished() { return entry.node == nullptr; }
+    bool isValid() { return entry.node; }
     
     bool operator==(const IteratorTemplate& other) const { return entry.node == other.entry.node; }
     bool operator!=(const IteratorTemplate& other) const { return !operator==(other); }
@@ -97,6 +99,11 @@ public:
     void operator++() {
       entry.key += entry.node->delta;
       entry.node = entry.node->adjacent(Side::RIGHT);
+    }
+    
+    void operator--() {
+      entry.node = entry.node->adjacent(Side::LEFT);
+      if (entry.node) entry.key -= entry.node->delta;
     }
     
     const EntryType& operator*() const { return entry; }
@@ -173,7 +180,7 @@ public:
   }
   
   /** Attaches a new node to the tree. */
-  void attach(Node* node, const Key& key, const OperationOptions& options) {
+  Iterator attach(Node* node, const Key& key, const OperationOptions& options) {
     if (node->isAttached()) throw new Error("The node is already attached.");
     node->color = NodeColor::RED;
     /** Both the key and the predecessor of a subtree are those of its leftmost element. */ 
@@ -269,6 +276,7 @@ public:
         node->setDelta(zeroKey + extremeDelta(options.deltaSide) - key);
       extremeDelta(options.deltaSide) = key - zeroKey;
     }
+    return Iterator({key, node});
   }
   
 private:

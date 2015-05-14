@@ -4,55 +4,50 @@
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 
-#include "Util/DRBTree.h"
-
 namespace Med {
 namespace Editor {
-
-class Buffer::Lines {
+  
+class Buffer::LineIterator : public Iterator::Impl {
 public:
-  typedef Util::DRBTree<int, int, QString> Tree;
+  LineIterator(Tree::Iterator treeIterator) : treeIterator_(treeIterator) {}
   
-  class LineIterator : public Iterator::Impl {
-  public:
-    LineIterator(Tree::Iterator treeIterator) : treeIterator_(treeIterator) {}
-    
-    Line get() const override {
-      return {treeIterator_->key, &treeIterator_->node->value};
-    }
-    
-    bool advance() override {
-      ++treeIterator_;
-      return !treeIterator_.finished();
-    }
-    
-    Tree::Iterator treeIterator_;
-  };
+  Line get() const override {
+    return {treeIterator_->key, &treeIterator_->node->value};
+  }
   
-  Tree tree;
+  bool advance() override {
+    ++treeIterator_;
+    return treeIterator_.isValid();
+  }
+  
+  Tree::Iterator treeIterator_;
 };
 
-Buffer::Buffer() : lines_(new Lines()) {}
+Buffer::Buffer() {}
 Buffer::~Buffer() {}
 
 void Buffer::InitFromStream(QTextStream* stream, const QString& name) {
   while (true) {
     QString line = stream->readLine();
     if (line.isNull()) break;
-    *insertLine(lineCount()) = line;
+    insertLine(lineCount())->node->value = line;
   }
   name_ = name;
 }
 
-QString* Buffer::insertLine(int lineNumber) {
-  auto node = new Lines::Tree::Node();
+Buffer::Tree::Iterator Buffer::line(int lineNumber) {
+  return tree_.get(lineNumber, {});
+}
+
+Buffer::Tree::Iterator Buffer::insertLine(int lineNumber) {
+  auto node = new Tree::Node();
   Util::DRBTreeDefs::OperationOptions options;
   options.repeats = true;
-  lines_->tree.attach(node, lineNumber, options);
+  Tree::Iterator line = tree_.attach(node, lineNumber, options);
   node->setDelta(1);
-  return &node->value;
+  return line;
 }
-  
+
 std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   QFile file(QString::fromStdString(filePath));
   if (!file.open(QFile::ReadOnly)) {
@@ -66,97 +61,92 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
 }
 
 Buffer::Iterator Buffer::IterableFromLineNumber::begin() {
-  std::unique_ptr<Lines::LineIterator> lineIterator;
-  Lines::Tree::Iterator treeIterator = buffer_->lines_->tree.get(lineNumber_, {});
-  if (!treeIterator.finished()) {
-    lineIterator.reset(new Lines::LineIterator(treeIterator));
+  std::unique_ptr<LineIterator> lineIterator;
+  Tree::Iterator treeIterator = buffer_->tree_.get(lineNumber_, {});
+  if (treeIterator.isValid()) {
+    lineIterator.reset(new LineIterator(treeIterator));
   }
   return {std::move(lineIterator)};
 }
 
-int Buffer::lineCount() { return lines_->tree.totalDelta(); }
-
-Buffer::IterableFromLineNumber Buffer::iterateFromLineNumber(int lineNumber) {
-  return {this, lineNumber};
-}
-
-QString* Buffer::Point::line() {
-  if (!buffer_) return nullptr;
-  if (buffer_->contentVersion() == contentVersion_) return cachedLine_;
-  cachedLine_ = nullptr;
-  for (Line line : buffer_->iterateFromLineNumber(lineNumber_)) {
-    cachedLine_ = line.content;
-    break;
-  }
-  return cachedLine_;
-}
-
 bool Buffer::Point::setColumnNumber(int columnNumber) {
-  QString* currentLine = line();
-  if (!currentLine) return false;
-  columnNumber_ = qBound(0, columnNumber, currentLine->size());
+  if (!line_.isValid()) return false;
+  columnNumber_ = qBound(0, columnNumber, lineContent()->size());
   return true;
 }
 
 void Buffer::Point::setLineNumber(int lineNumber) {
-  lineNumber_ = qBound(0, lineNumber, buffer_->lineCount());
-  invalidateCache();
+  line_ = buffer_->line(qBound(0, lineNumber, buffer_->lineCount()));
+}
+
+bool Buffer::Point::moveToLineStart() {
+  columnNumber_ = 0;
+  return true;
+}
+
+bool Buffer::Point::moveToLineEnd() {
+  if (!line_.isValid()) return false;
+  columnNumber_ = lineContent()->size();
+  return true;
+}
+
+bool Buffer::Point::moveUp() {
+  if (!line_.isValid()) return false;
+  Tree::Iterator newLine = line_;
+  --newLine;
+  if (!newLine.isValid()) return false;
+  line_ = newLine;
+  return true;
+}
+
+bool Buffer::Point::moveDown() {
+  if (!line_.isValid()) return false;
+  Tree::Iterator newLine = line_;
+  ++newLine;
+  if (!newLine.isValid()) return false;
+  line_ = newLine;
+  return true;
 }
 
 bool Buffer::Point::moveLeft() {
-  if (columnNumber_ > 0) --columnNumber_;
-  else if (lineNumber_ > 0) {
-    --lineNumber_;
-    invalidateCache();
-    QString* currentLine = line();
-    if (currentLine) columnNumber_ = currentLine->size();
-  } else return false;
+  if (columnNumber_ == 0) return moveUp() && moveToLineEnd();
+  --columnNumber_;
   return true;
 }
 
 bool Buffer::Point::moveRight() {
-  QString* currentLine = line();
-  if (!currentLine) return false;
-  if (columnNumber_ < currentLine->size()) ++columnNumber_;
-  else if (lineNumber_ < buffer_->lineCount()) {
-    ++lineNumber_;
-    columnNumber_ = 0;
-    invalidateCache();
-  } else return false;
+  if (!line_.isValid()) return false;
+  if (columnNumber_ >= lineContent()->size()) return moveDown() && moveToLineStart();
+  ++columnNumber_;
   return true;
 }
 
 bool Buffer::Point::insertBefore(const QString& text) {
-  QString* lineContent = line();
-  if (!lineContent) return false;
-  lineContent->insert(columnNumber_, text);
+  if (!line_.isValid()) return false;
+  lineContent()->insert(columnNumber_, text);
   columnNumber_ += text.size();
-  ++buffer_->contentVersion_;
   return true;
 }
 
 bool Buffer::Point::insertLineBreakBefore() {
-  QString* currentLine = line();
-  QString* newLine = buffer_->insertLine(lineNumber_ + 1);
-  if (currentLine) {
-    *newLine = currentLine->right(currentLine->size() - columnNumber_);
-    currentLine->truncate(columnNumber_);
-  }
-  ++lineNumber_;
+  if (!line_.isValid()) return false;
+  Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
+  newLine->node->value = lineContent()->right(lineContent()->size() - columnNumber_);
+  lineContent()->truncate(columnNumber_);
+  line_ = newLine;
   columnNumber_ = 0;
-  invalidateCache();
-  ++buffer_->contentVersion_;
   return true;
 }
 
-bool Buffer::Point::deleteCharBefore() {
-  // TODO: should join lines
-  if (columnNumber_ == 0) return false;
-  QString* currentLine = line();
-  if (!currentLine) return false;
-  --columnNumber_;
-  currentLine->remove(columnNumber_, 1);
-  ++buffer_->contentVersion_;
+bool Buffer::Point::deleteCharAfter() {
+  if (!line_.isValid()) return false;
+  if (columnNumber_ == lineContent()->size()) {
+    // TODO: implement joining lines
+    // if (!buffer_->joinLines(lineNumber_, 1)) return false;
+    return false;
+  } else {
+    lineContent()->remove(columnNumber_, 1);
+  }
   return true;
 }
 

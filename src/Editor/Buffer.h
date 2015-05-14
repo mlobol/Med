@@ -8,6 +8,7 @@
 #include <QtCore/QString>
 #include <QtCore/QTextStream>
 
+#include "Util/DRBTree.h"
 #include "Util/IteratorHelper.h"
 
 namespace Med {
@@ -46,23 +47,23 @@ public:
   
   const QString& name() { return name_; }
   
-  int lineCount();
-  IterableFromLineNumber iterateFromLineNumber(int lineNumber);
-  
-  int64_t contentVersion() const { return contentVersion_; }
+  int lineCount() const { return tree_.totalDelta(); }
+
+  IterableFromLineNumber iterateFromLineNumber(int lineNumber) { return {this, lineNumber}; }
   
 private:
   friend class BufferTest;
-  
-  class Lines;
-  
+  class LineIterator;
+  typedef Util::DRBTree<int, int, QString> Tree;
+
   Buffer();
   
   void InitFromStream(QTextStream* stream, const QString& name);
-  QString* insertLine(int lineNumber);
-  
-  std::unique_ptr<Lines> lines_;
-  int64_t contentVersion_ = 0;
+
+  Tree::Iterator line(int lineNumber);
+  Tree::Iterator insertLine(int lineNumber);
+
+  Tree tree_;
   QString name_;
 };
 
@@ -74,28 +75,27 @@ public:
   void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
-  int lineNumber() const { return lineNumber_; }
-  QString* line();
+  int lineNumber() const { return line_->key; }
 
+  bool moveToLineStart();
+  bool moveToLineEnd();
+  bool moveUp();
+  bool moveDown();
   bool moveLeft();
   bool moveRight();
  
   bool insertBefore(const QString& text);
   bool insertLineBreakBefore();
   
-  bool deleteCharBefore();
+  bool deleteCharBefore() { return moveLeft() && deleteCharAfter(); }
+  bool deleteCharAfter();
   
 private:
-  void invalidateCache() {
-    cachedLine_ = nullptr;
-    contentVersion_ = -1;
-  }
+  QString* lineContent() const { return &line_->node->value; }
   
   Buffer* const buffer_ = nullptr;
+  Tree::Iterator line_;
   int columnNumber_ = 0;
-  int lineNumber_ = 0;
-  QString* cachedLine_ = nullptr;
-  int64_t contentVersion_ = -1;
 };
 
 }  // namespace Editor

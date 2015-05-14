@@ -148,12 +148,29 @@ public:
       case Qt::Key_Right:
         if (insertionPoint().moveRight()) updateAfterCursorMoved();
         return;
+      case Qt::Key_Up:
+        if (insertionPoint().moveUp()) updateAfterCursorMoved();
+        return;
+      case Qt::Key_Down:
+        if (insertionPoint().moveDown()) updateAfterCursorMoved();
+        return;
+      case Qt::Key_Home:
+        if (insertionPoint().moveToLineStart()) updateAfterCursorMoved();
+        return;
+      case Qt::Key_End:
+        if (insertionPoint().moveToLineEnd()) updateAfterCursorMoved();
+        return;
       // Content changes that may insert or delete lines.
       case Qt::Key_Return:
         if (insertionPoint().insertLineBreakBefore()) updateAfterLineInsertedOrDeleted();
         return;
       case Qt::Key_Backspace:
+        // TODO: optimize case where no lines inserted or deleted
         if (insertionPoint().deleteCharBefore()) updateAfterLineInsertedOrDeleted();
+        return;
+      case Qt::Key_Delete:
+        // TODO: optimize case where no lines inserted or deleted
+        if (insertionPoint().deleteCharAfter()) updateAfterLineInsertedOrDeleted();
         return;
       // Content changes that may not insert or delete lines.
       default:
