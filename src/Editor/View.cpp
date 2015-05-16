@@ -3,7 +3,9 @@
 namespace Med {
 namespace Editor {
 
-View::View(Buffer* buffer) : buffer_(buffer), insertionPoint_(buffer) {}
+View::View(Buffer* buffer) : buffer_(buffer), insertionPoint_(buffer), pageTop_(buffer) {
+  pageTop_.setLineNumber(1);
+}
 
 }  // namespace Editor
 }  // namespace Med

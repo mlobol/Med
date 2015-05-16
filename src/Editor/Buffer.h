@@ -13,7 +13,7 @@
 
 namespace Med {
 namespace Editor {
-  
+
 class IOException : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
@@ -22,42 +22,20 @@ class Buffer {
 public:
   class Point;
 
-  struct Line {
-    int lineNumber;
-    QString* content;
-  };
-
-  typedef Util::IteratorHelper<Line> Iterator;
-
-  class IterableFromLineNumber {
-  public:
-    IterableFromLineNumber(Buffer* buffer, int lineNumber) : buffer_(buffer), lineNumber_(lineNumber) {}
-    
-    Iterator begin();
-    Iterator end() { return {}; }
-
-  private:
-    Buffer* buffer_;
-    int lineNumber_;
-  };
-  
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
-  
+
   ~Buffer();
-  
+
   const QString& name() { return name_; }
-  
+
   int lineCount() const { return tree_.totalDelta(); }
 
-  IterableFromLineNumber iterateFromLineNumber(int lineNumber) { return {this, lineNumber}; }
-  
 private:
   friend class BufferTest;
-  class LineIterator;
   typedef Util::DRBTree<int, int, QString> Tree;
 
   Buffer();
-  
+
   void InitFromStream(QTextStream* stream, const QString& name);
 
   Tree::Iterator line(int lineNumber);
@@ -69,8 +47,26 @@ private:
 
 class Buffer::Point {
 public:
+  typedef Util::IteratorHelper<Point> Iterator;
+
+  class LinesForwardsIterable {
+  public:
+    Iterator begin();
+    Iterator end() { return {nullptr}; }
+
+  private:
+    friend Point;
+    
+    LinesForwardsIterable(Point* from) : from_(from) {}
+
+    Point* from_;
+  };
+
   Point(Buffer* buffer) : buffer_(buffer) {}
-  
+
+  bool isValid() const { return line_.isValid(); }
+  const QString& lineContent() const { return *modifiableLineContent(); }
+
   bool setColumnNumber(int columnNumber);
   void setLineNumber(int lineNumber);
 
@@ -83,16 +79,20 @@ public:
   bool moveDown();
   bool moveLeft();
   bool moveRight();
- 
+
   bool insertBefore(const QString& text);
   bool insertLineBreakBefore();
-  
+
   bool deleteCharBefore() { return moveLeft() && deleteCharAfter(); }
   bool deleteCharAfter();
-  
+
+  LinesForwardsIterable linesForwards() { return LinesForwardsIterable(this); }
+
 private:
-  QString* lineContent() const { return &line_->node->value; }
-  
+  class IteratorImpl;
+
+  QString* modifiableLineContent() const { return &line_->node->value; }
+
   Buffer* const buffer_ = nullptr;
   Tree::Iterator line_;
   int columnNumber_ = 0;

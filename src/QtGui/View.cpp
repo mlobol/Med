@@ -24,7 +24,7 @@ public:
       update(cursorBounds_);
     });
   }
-  
+
   bool event(QEvent* event) override {
     if (event->type() == QEvent::KeyPress) {
       QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
@@ -35,24 +35,24 @@ public:
     }
     return QWidget::event(event);
   }
-  
+
   void resetPage() {
     const int leading = textFontMetrics_->leading();
     QPointF linePos(0, 0);
     page_.clear();
     int top = 0;
     cursorBounds_ = {};
-    for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(view_->view_->pageTopLineNumber())) {
-      page_.emplace_back(new QTextLayout(*line.content, *textFont_));
+    for (Editor::Buffer::Point point : view_->view_->pageTop_.linesForwards()) {
+      page_.emplace_back(new QTextLayout(point.lineContent(), *textFont_));
       QTextLayout* layout = page_.back().get();
       top += leading;
       updateLayout(layout, top);
-      if (line.lineNumber == insertionPoint().lineNumber()) updateCursorBounds(layout);
+      if (point.lineNumber() == insertionPoint().lineNumber()) updateCursorBounds(layout);
       top = layout->boundingRect().bottom();
       if (top >= height()) break;
     }
   }
-  
+
   void updateLayout(QTextLayout* layout, int top) {
     QTextOption textOption;
     textOption.setWrapMode(QTextOption::NoWrap);
@@ -64,10 +64,10 @@ public:
     layoutLine.setPosition(QPointF(0, top));
     layout->endLayout();
   }
-  
+
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    int lineNumber = view_->view_->pageTopLineNumber() - 1;
+    int lineNumber = view_->view_->pageTop_.lineNumber() - 1;
     for (auto& layout : page_) {
       ++lineNumber;
       layout->draw(&painter, {0, 0});
@@ -77,15 +77,15 @@ public:
     }
     QWidget::paintEvent(event);
   }
-  
+
   Editor::Buffer::Point& insertionPoint() { return view_->view_->insertionPoint_; }
-  
+
   QTextLayout* layoutForLineNumber(int lineNumber) {
-    int layoutIndex = lineNumber - view_->view_->pageTopLineNumber();
+    int layoutIndex = lineNumber - view_->view_->pageTop_.lineNumber();
     if (layoutIndex < 0 || layoutIndex >= page_.size()) return nullptr;
     return page_.at(layoutIndex).get();
   }
-  
+
   void updateCursorBounds(QTextLayout* layoutForInsertionPoint) {
     cursorBounds_ = layoutForInsertionPoint->boundingRect().toAlignedRect();
     cursorBounds_.setLeft(layoutForInsertionPoint->lineAt(0).cursorToX(
@@ -93,7 +93,7 @@ public:
     // Needs to be one larger than the width passed to drawCursor to account for rounding.
     cursorBounds_.setWidth(3);
   }
-  
+
   void updateAfterVisibleChange(QRect bounds) {
     update(bounds);
     if (!hasFocus()) return;
@@ -101,15 +101,15 @@ public:
     cursorOn_ = true;
     cursorBlinkingTimer_->start(500);
   }
-  
+
   void updateAfterInsertionLineModified() {
     QTextLayout* layout = layoutForLineNumber(insertionPoint().lineNumber());
     if (!layout) return;
     int oldHeight = layout->boundingRect().height();
     int top = layout->boundingRect().top();
-    QString* content = nullptr;
-    for (Editor::Buffer::Line line : view_->view_->buffer()->iterateFromLineNumber(insertionPoint().lineNumber())) {
-      content = line.content;
+    const QString* content = nullptr;
+    for (Editor::Buffer::Point point : view_->view_->insertionPoint_.linesForwards()) {
+      content = &point.lineContent();
       break;
     }
     if (content) layout->setText(content ? *content : "");
@@ -126,19 +126,19 @@ public:
       updateAfterVisibleChange(rect());
     }
   }
-  
+
   void updateAfterCursorMoved() {
     update(cursorBounds_);
     QTextLayout* layoutForInsertionPoint = layoutForLineNumber(insertionPoint().lineNumber());
     if (layoutForInsertionPoint) updateCursorBounds(layoutForInsertionPoint);
     updateAfterVisibleChange(cursorBounds_);
   }
-  
+
   void updateAfterLineInsertedOrDeleted() {
     resetPage();
     updateAfterVisibleChange(rect());
   }
-  
+
   void keyPressEvent(QKeyEvent* event) override {
     switch (event->key()) {
       // Moving the cursor.
@@ -182,10 +182,10 @@ public:
     }
     QWidget::keyPressEvent(event);
   }
-  
+
   void mousePressEvent(QMouseEvent* event) override {
     if (event->button() == Qt::LeftButton) {
-      int lineNumber = view_->view_->pageTopLineNumber() - 1;
+      int lineNumber = view_->view_->pageTop_.lineNumber() - 1;
       QTextLayout* layoutForClick = nullptr;
       for (auto& layout : page_) {
         ++lineNumber;
@@ -198,26 +198,26 @@ public:
       updateAfterCursorMoved();
     }
   }
-  
+
   void focusInEvent(QFocusEvent* event) override {
     updateAfterVisibleChange(cursorBounds_);
   }
-  
+
   void focusOutEvent(QFocusEvent* event) override {
     cursorBlinkingTimer_->stop();
     // The update will hide the cursor.
     update(cursorBounds_);
   }
-  
+
   void setTextFont(const QFont& font) {
     textFont_.reset(new QFont(font));
     textFontMetrics_.reset(new QFontMetrics(*textFont_));
   }
-  
+
   int linesPerPage() {
     return height() / textFontMetrics_->lineSpacing();
   }
-  
+
   std::unique_ptr<QFont> textFont_;
   std::unique_ptr<QFontMetrics> textFontMetrics_;
   std::vector<std::unique_ptr<QTextLayout>> page_;
@@ -225,15 +225,15 @@ public:
   bool cursorOn_ = false;
   QTimer* cursorBlinkingTimer_ = nullptr;
   QRect cursorBounds_;
-  
+
   View* view_ = nullptr;
 };
-  
+
 class View::ScrollArea : public QAbstractScrollArea {
 public:
   ScrollArea(QWidget* parent, View* view): QAbstractScrollArea(parent), view_(view) {
     QObject::connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this] (int value) {
-      view_->view_->setPageTopLineNumber(value);
+      view_->view_->pageTop_.setLineNumber(value);
       if (view_->lines_) view_->lines_->resetPage();
     });
   }
@@ -242,37 +242,37 @@ public:
     // Don't know why I have to call this explicitly.
     view_->lines_->paintEvent(event);
   }
-  
+
   void keyPressEvent(QKeyEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->keyPressEvent(event);
   }
-  
+
   void mousePressEvent(QMouseEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->mousePressEvent(event);
   }
-  
+
   void focusInEvent(QFocusEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->focusInEvent(event);
   }
-  
+
   void focusOutEvent(QFocusEvent* event) override {
     // Don't know why I have to call this explicitly.
     view_->lines_->focusOutEvent(event);
   }
-  
+
   void resizeEvent(QResizeEvent* event) override {
     verticalScrollBar()->setPageStep(view_->lines_->linesPerPage());
     linesPerPageOrLineCountUpdated();
   }
-  
+
   void linesPerPageOrLineCountUpdated() {
     verticalScrollBar()->setRange(1, std::max(0, view_->view_->buffer()->lineCount() - view_->lines_->linesPerPage()));
     if (view_->lines_) view_->lines_->resetPage();
   }
-  
+
   View* view_;
 };
 
