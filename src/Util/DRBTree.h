@@ -12,46 +12,46 @@ class DRBTreeDefs {
 public:
   enum class Side { LEFT, RIGHT };
   enum class NodeColor { BLACK, RED };
-  
+
   static Side other(Side side) {
     return side == Side::LEFT ? Side::RIGHT : Side::LEFT;
   }
-  
+
   struct OperationOptions {
     /** Which side's accumulated deltas are taken to represent the key of a node.
-      * 
+      *
       * Another way of seeing it is that nodes on this side are taken to have a smaller key, while nodes on the other side have a bigger key.
       */
     Side deltaSide = Side::LEFT;
-    
+
     /** When multiple nodes with the same key exist, which end of the same-key segment to operate on.
-      * 
+      *
       * When getting a node, the node on that end of the segment will be returned.
-      * 
+      *
       * When attaching a node, the node will become that end of the segment. If null, and there already is a node with that key, an error will be raised.
       */
     bool repeats = false;
     Side repeatedSide = Side::LEFT;
-    
+
     /** (Only meaningful when getting) If set, when getting a node with a key that doesn't exist in the tree, which adjacent existing node to return instead.
       */
     bool equalOrAdjacent = false;
     Side equalOrAdjacentSide = Side::LEFT;
   };
-  
+
   class Error : public std::logic_error {
     using std::logic_error::logic_error;
   };
 };
 
 /** A sorted map from "numeric" keys to arbitrary values, where some operations that affect many keys are efficient.
- * 
+ *
  * The main such operation is increasing the keys of all elements from a given element to the end of the tree by the same amount. This operation is on average and at worst O(log N).
  *
  * Search, insertion and deletion are also O(log N) on average and at worst.
- * 
+ *
  * This map uses the concept of "delta". An element's delta is the difference between its key and the previous node's key.
- * 
+ *
  * Keys are not stored directly, but computed from deltas.
  */
 template<typename Key_, typename Delta_, typename Value_>
@@ -60,75 +60,75 @@ public:
   typedef Key_ Key;
   typedef Delta_ Delta;
   typedef Value_ Value;
-  
+
   static constexpr Key zeroKey{};
   static constexpr Delta zeroDelta{};
-  
+
   class Node;
-  
+
   struct ConstEntry {
     Key key;
     const Node* node;
   };
-  
+
   struct Entry {
     Key key;
     Node* node;
   };
-  
+
   DRBTree() {}
   ~DRBTree() {}
-  
+
   /** Returns true iff the tree has no elements. */
   bool empty() const { return root == nullptr; }
-  
+
   Delta totalDelta() const { return leftmostExtremeDelta + childrenDelta() + rightmostExtremeDelta; }
 
   template<typename EntryType_>
   class IteratorTemplate {
   public:
     typedef EntryType_ EntryType;
-    
+
     IteratorTemplate() : entry{zeroKey, nullptr} {}
-  
-    bool isValid() { return entry.node; }
-    
+
+    bool isValid() const { return entry.node; }
+
     bool operator==(const IteratorTemplate& other) const { return entry.node == other.entry.node; }
     bool operator!=(const IteratorTemplate& other) const { return !operator==(other); }
-    
+
     void operator++() {
       entry.key += entry.node->delta;
       entry.node = entry.node->adjacent(Side::RIGHT);
     }
-    
+
     void operator--() {
       entry.node = entry.node->adjacent(Side::LEFT);
       if (entry.node) entry.key -= entry.node->delta;
     }
-    
+
     const EntryType& operator*() const { return entry; }
     const EntryType* operator->() const { return &entry; }
-    
+
   private:
     friend class DRBTree;
     explicit IteratorTemplate(const EntryType entry) : entry(entry) {}
-    
+
     EntryType entry;
   };
-  
+
   typedef IteratorTemplate<ConstEntry> ConstIterator;
   typedef IteratorTemplate<Entry> Iterator;
-  
+
   ConstIterator extreme(Side side, OperationOptions options) const { return extremeInternal<Iterator>(side, options); }
-  
+
   Iterator extreme(Side side, OperationOptions options) { return extremeInternal<Iterator>(side, options); }
-  
+
   ConstIterator begin() const { return beginInternal<ConstIterator>(); }
   ConstIterator end() const { return endInternal<ConstIterator>(); }
-  
+
   Iterator begin() { return beginInternal<Iterator>(); }
-  Iterator end() { return endInternal<Iterator>(); }  
-  
+  Iterator end() { return endInternal<Iterator>(); }
+
   /** Gets a node from the tree. Also returns its key, which might be different from the supplied key if equalOrAdjacentSide is set. */
   Iterator get(const Key& key, const OperationOptions& options) {
     if (root == nullptr) return Iterator({zeroKey, nullptr});
@@ -149,15 +149,15 @@ public:
         dir = options.repeatedSide;
       } else
         dir = key < keyAtNode ? options.deltaSide : other(options.deltaSide);
-      
+
       if (dir != options.deltaSide) {
         predecessorOfSubtree = current;
         keyAtSubtree = keyAtNode + current->delta;
       }
-      
+
       parent = current;
       current = current->children.get(dir);
-      
+
       if (current == nullptr && found == nullptr && options.equalOrAdjacent) {
         foundKey = keyAtNode;
         found = parent;
@@ -178,12 +178,12 @@ public:
     }
     return Iterator({foundKey, found});
   }
-  
+
   /** Attaches a new node to the tree. */
   Iterator attach(Node* node, const Key& key, const OperationOptions& options) {
     if (node->isAttached()) throw new Error("The node is already attached.");
     node->color = NodeColor::RED;
-    /** Both the key and the predecessor of a subtree are those of its leftmost element. */ 
+    /** Both the key and the predecessor of a subtree are those of its leftmost element. */
     struct Subtree { Key key; Node* predecessor; };
     Subtree subtree{zeroKey + extremeDelta(options.deltaSide), nullptr};
     if (root == nullptr) {
@@ -210,7 +210,7 @@ public:
           current->children.get(Side::LEFT)->color = NodeColor::BLACK;
           current->children.get(Side::RIGHT)->color = NodeColor::BLACK;
         }
-        
+
         if (Node::isRed(current) && Node::isRed(parent)) {
           if (hasLast && dir == last) {
             rotateSingle(grandparent, other(last));
@@ -225,7 +225,7 @@ public:
             }
           }
         }
-          
+
         if (current != node) {
           hasLast = true;
           last = dir;
@@ -238,7 +238,7 @@ public:
             }
             dir = options.repeatedSide;
           }
-          
+
           grandparent = parent;
           grandparentSubtree = parentSubtree;
           parent = current;
@@ -257,7 +257,7 @@ public:
 
     // Set the node's delta.
     if (subtree.predecessor) {
-      // At the leaf, subtree 
+      // At the leaf, subtree
       if (key > subtree.key) {
         // This means we are at the biggest end of the tree and we're increasing the tree's total delta.
         node->setDelta(zeroDelta);
@@ -278,10 +278,10 @@ public:
     }
     return Iterator({key, node});
   }
-  
+
 private:
   friend class DRBTreeTest;
-  
+
   Delta childrenDelta() const { return empty() ? zeroDelta : root->subtreeDelta; }
 
   template<typename IteratorType>
@@ -294,19 +294,19 @@ private:
     }
     return IteratorType(entry);
   }
-  
+
   template<typename IteratorType>
   IteratorType beginInternal() { return extremeInternal<IteratorType>(Side::LEFT, {}); }
-  
+
   template<typename IteratorType>
   IteratorType endInternal() { return IteratorType({zeroKey, nullptr}); }
 
   Delta& extremeDelta(Side side) {
     return side == Side::LEFT ? leftmostExtremeDelta : rightmostExtremeDelta;
   }
-  
+
   class InternalError : public std::logic_error { using std::logic_error::logic_error; };
-  
+
   class Children {
   public:
     Side sideWithNode(Node* node) {
@@ -314,31 +314,31 @@ private:
       else if (rightChild == node) return Side::RIGHT;
       else throw InternalError("No side with the requested node!");
     }
-    
+
     Node*& get(Side side) { return getInternal(this, side); }
     const Node* get(Side side) const { return getInternal(this, side); }
-    
+
     Delta subtreeDelta(Side side) {
       Node* child = get(side);
       return child != nullptr ? child->subtreeDelta : zeroDelta;
     }
-    
+
     Delta totalSubtreeDeltas() { return subtreeDelta(Side::LEFT) + subtreeDelta(Side::RIGHT); }
-    
+
     /** If the child exists, update its subtree delta. */
     void updateSubtreeDelta(Side side) {
       Node* child = get(side);
       if (child != nullptr) child->updateSubtreeDelta();
     }
 
-    /** Requires that this node has at most one child; returns that child, or null if the node has no children. 
+    /** Requires that this node has at most one child; returns that child, or null if the node has no children.
      */
     Node* onlyChild() {
       if (leftChild != nullptr && rightChild != nullptr)
         throw InternalError("Node has both children!");
       return leftChild != nullptr ? leftChild : rightChild;
     }
-    
+
     template<typename NodeType>
     class IteratorTemplate {
     public:
@@ -347,15 +347,15 @@ private:
         // If the first child doesn't exist, advance to the first child that does.
         if (operator*() == nullptr) operator++();
       }
-      
+
       bool operator==(const IteratorTemplate& other) const { return finished == other.finished; }
       bool operator!=(const IteratorTemplate& other) const { return !operator==(other); }
-      
+
       NodeType* operator*() const {
         if (finished) throw InternalError("Dereferencing finished iterator!");
         return children->get(side);
       }
-      
+
       void operator++() {
         if (finished) throw InternalError("Advancing finished iterator!");
         if (side == Side::LEFT) {
@@ -368,12 +368,12 @@ private:
     private:
       const Children* children = nullptr;
       bool finished = false;
-      Side side = Side::LEFT;      
+      Side side = Side::LEFT;
     };
-    
+
     typedef IteratorTemplate<Node> Iterator;
     typedef IteratorTemplate<const Node> ConstIterator;
-    
+
     Iterator begin() { return Iterator(this); }
     Iterator end() { return Iterator(); }
 
@@ -389,7 +389,7 @@ private:
     Node* leftChild = nullptr;
     Node* rightChild = nullptr;
   };
-  
+
   void rotateSingle(Node* oldRoot, Side dir) {
     Node* const newRoot = oldRoot->children.get(other(dir));
     Node* const top = oldRoot->parent;
@@ -399,28 +399,28 @@ private:
     if (top == nullptr) root = newRoot;
     else top->children.get(oldRoot->parentSide()) = newRoot;
     newRoot->parent = top;
-    
+
     newRoot->children.get(dir) = oldRoot;
     oldRoot->parent = newRoot;
-    
+
     oldRoot->color = NodeColor::RED;
     newRoot->color = NodeColor::BLACK;
-    
+
     // Note how these two operations don't affect each other.
     oldRoot->children.updateSubtreeDelta(other(dir));
     newRoot->children.updateSubtreeDelta(dir);
   }
-  
+
   void rotateDouble(Node* oldRoot, Side side) {
     rotateSingle(oldRoot->children.get(other(side)), other(side));
     rotateSingle(oldRoot, side);
   }
-  
+
   // Detach @detached from the tree and move @moved from its current location to detached's location.
   // If @moved and @detached are the same node, it is simply detached from the tree.
   void moveAndDetach(Node* moved, Node* detached) {
     Node* const child = moved->children.onlyChild();
-    // Point the parent to the child. 
+    // Point the parent to the child.
     if (moved->parent == nullptr)
       root = child;
     else {
@@ -470,7 +470,7 @@ private:
       // The node has at most one child.
       current = node;
     }
-    
+
     NodeColor savedColor = current->color;
     Node* const parent = current->parent == node ? current : current->parent;
 
@@ -487,7 +487,7 @@ private:
     } else {
       while (true) {
         Node* sibling = current->children(other(side));
-        
+
         // Case reduction, remove red sibling.
         if (isRed(sibling)) {
           rotateSingle(current, side);
@@ -541,48 +541,48 @@ template<typename Key, typename Delta, typename Value>
 class DRBTree<Key, Delta, Value>::Node {
 public:
   Node() : value() {}
-  
+
   template<typename InitValue>
   explicit Node(InitValue initValue) : value(initValue) {}
-  
+
   template<typename InitValue>
   explicit Node(const std::initializer_list<InitValue>& initValue) : value(initValue) {}
-  
+
   typedef DRBTree<Key, Delta, Value> Tree;
 
   Value value;
-  
+
   Tree* tree = nullptr;
 
   /** The node's delta; can be set arbitrarily (but then the node's antecessors' subtree deltas must be updated). */
   Delta delta = zeroDelta;
-  
+
   /** The node's delta, plus the subtree deltas of its children (if any). */
   Delta subtreeDelta = zeroDelta;
-  
+
   /** The node's color; see a Red/Black tree explanation for the definition. */
   NodeColor color = NodeColor::RED;
 
   /** The node's children object, which encapsulates accesses to the children nodes. */
   Children children;
-  
+
   /** The node's parent; null if this is the tree's root or the node is detached from the tree. */
   Node* parent = nullptr;
-  
+
   /** Whether this node is currently attached to the tree. */
   bool isAttached() { return tree != nullptr; }
 
   /** On which side of its parent this node is. Must not be called if the node has no parent. */
   Side parentSide() { return parent->children.sideWithNode(this); }
-  
+
   Delta nodePlusSubtreeDelta(Side side) { return delta + children.subtreeDelta(side); }
-  
+
   /** Set the delta for this node. Recomputes subtree delta. */
   void setDelta(Delta newDelta) {
     delta = newDelta;
     updateSubtreeDelta();
   }
-      
+
   /** Recompute subtreeDelta from the node's delta and the children's subtree deltas, for this node and all its ancestors, until an ancestor with an unchanged subtree delta is found. */
   void updateSubtreeDelta() {
     for (Node* node = this; node != nullptr; node = node->parent) {
@@ -591,13 +591,13 @@ public:
       node->subtreeDelta = newSubtreeDelta;
     }
   }
-  
+
   /** Detach the node form the tree. */
   void detach() {
     if (!isAttached()) throw Error("The node is not attached.");
     tree->detach(this);
   }
-  
+
   /** Returns this node's key. */
   Key key(Side side) {
     Delta key = children.subtreeDelta(side);
@@ -606,7 +606,7 @@ public:
     }
     return zeroKey + key;
   }
-  
+
   /** Returns the node's key delta, i.e. the difference between this node's key and the next node's key. */
   Delta getDelta() { return delta; }
 
@@ -617,7 +617,7 @@ public:
     for (node = this; (child = node->children.get(side)) != nullptr; node = child);
     return node;
   }
-  
+
   /** Returns the node that is adjacent to this one on the given side. If none, returns null. */
   Node* adjacent(Side side) {
     Node* child = children.get(side);
@@ -630,7 +630,7 @@ public:
   }
 
 #if 0
-  def subtreeToString(subtreeKey: Key = zeroKey, indentString: String = "", moreSiblings: Boolean = false, fromParent: 
+  def subtreeToString(subtreeKey: Key = zeroKey, indentString: String = "", moreSiblings: Boolean = false, fromParent:
 Node = null): String = {
     val childrenIndentString = indentString + (if (moreSiblings) "| " else "  ")
     val key = subtreeKey + children.subtreeDelta(Left)
@@ -649,7 +649,7 @@ Node = null): String = {
         else
           ""))
   }
-  
+
   override def toString = subtreeToString()
 #endif
 
