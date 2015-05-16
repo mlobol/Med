@@ -60,7 +60,7 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
 
 bool Buffer::Point::setColumnNumber(int columnNumber) {
   if (!line_.isValid()) return false;
-  columnNumber_ = qBound(0, columnNumber, modifiableLineContent()->size());
+  columnNumber_ = qBound(0, columnNumber, lineContent().size());
   return true;
 }
 
@@ -75,7 +75,7 @@ bool Buffer::Point::moveToLineStart() {
 
 bool Buffer::Point::moveToLineEnd() {
   if (!line_.isValid()) return false;
-  columnNumber_ = modifiableLineContent()->size();
+  columnNumber_ = lineContent().size();
   return true;
 }
 
@@ -105,7 +105,7 @@ bool Buffer::Point::moveLeft() {
 
 bool Buffer::Point::moveRight() {
   if (!line_.isValid()) return false;
-  if (columnNumber_ >= modifiableLineContent()->size()) return moveDown() && moveToLineStart();
+  if (columnNumber_ >= lineContent().size()) return moveDown() && moveToLineStart();
   ++columnNumber_;
   return true;
 }
@@ -120,7 +120,7 @@ bool Buffer::Point::insertBefore(const QString& text) {
 bool Buffer::Point::insertLineBreakBefore() {
   if (!line_.isValid()) return false;
   Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
-  newLine->node->value = modifiableLineContent()->right(modifiableLineContent()->size() - columnNumber_);
+  newLine->node->value = lineContent().right(lineContent().size() - columnNumber_);
   modifiableLineContent()->truncate(columnNumber_);
   line_ = newLine;
   columnNumber_ = 0;
@@ -129,7 +129,7 @@ bool Buffer::Point::insertLineBreakBefore() {
 
 bool Buffer::Point::deleteCharAfter() {
   if (!line_.isValid()) return false;
-  if (columnNumber_ == modifiableLineContent()->size()) {
+  if (columnNumber_ == lineContent().size()) {
     // TODO: implement joining lines
     // if (!buffer_->joinLines(lineNumber_, 1)) return false;
     return false;
