@@ -9,16 +9,16 @@ namespace Editor {
 
 class Buffer::Point::IteratorImpl : public Iterator::Impl {
 public:
-  IteratorImpl(const Point& from) : point_(from) {}
+  IteratorImpl(const Point& from) : line_(from.line_) {}
 
-  Point get() const override { return point_; }
+  UnsafeLine get() const override { return {line_->key, &line_->node->value.content}; }
 
   bool advance() override {
-    ++point_.line_;
-    return point_.line_.isValid();
+    ++line_;
+    return line_.isValid();
   }
 
-  Point point_;
+  Tree::Iterator line_;
 };
 
 Buffer::Buffer() {}
@@ -28,7 +28,7 @@ void Buffer::InitFromStream(QTextStream* stream, const QString& name) {
   while (true) {
     QString line = stream->readLine();
     if (line.isNull()) break;
-    insertLine(lineCount() + 1)->node->value = line;
+    insertLine(lineCount() + 1)->node->value.content = line;
   }
   name_ = name;
 }
@@ -58,6 +58,28 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   return buffer;
 }
 
+Buffer::Point::Point(Buffer* buffer) : buffer_(buffer) {}
+Buffer::Point::~Point() { setLine({}); }
+
+void Buffer::Point::setLine(Tree::Iterator newLine) {
+  if (line_.isValid()) {
+    std::vector<Point*>& points = line_->node->value.points;
+    if (indexInLinePoints_ < points.size() - 1) {
+      Point*& pointsEntry = points[indexInLinePoints_];
+      if (pointsEntry != this) throw new std::logic_error("Internal Error.");
+      pointsEntry = points.back();
+      pointsEntry->indexInLinePoints_ = indexInLinePoints_;
+    }
+    points.pop_back();
+  }
+  line_ = newLine;
+  if (line_.isValid()) {
+    std::vector<Point*>& points = line_->node->value.points;
+    indexInLinePoints_ = points.size();
+    points.push_back(this);
+  }
+}
+
 bool Buffer::Point::setColumnNumber(int columnNumber) {
   if (!line_.isValid()) return false;
   columnNumber_ = qBound(0, columnNumber, lineContent().size());
@@ -65,7 +87,7 @@ bool Buffer::Point::setColumnNumber(int columnNumber) {
 }
 
 void Buffer::Point::setLineNumber(int lineNumber) {
-  line_ = buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1));
+  setLine(buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1)));
 }
 
 bool Buffer::Point::moveToLineStart() {
@@ -84,7 +106,7 @@ bool Buffer::Point::moveUp() {
   Tree::Iterator newLine = line_;
   --newLine;
   if (!newLine.isValid()) return false;
-  line_ = newLine;
+  setLine(newLine);
   return true;
 }
 
@@ -93,7 +115,7 @@ bool Buffer::Point::moveDown() {
   Tree::Iterator newLine = line_;
   ++newLine;
   if (!newLine.isValid()) return false;
-  line_ = newLine;
+  setLine(newLine);
   return true;
 }
 
@@ -120,9 +142,9 @@ bool Buffer::Point::insertBefore(const QString& text) {
 bool Buffer::Point::insertLineBreakBefore() {
   if (!line_.isValid()) return false;
   Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
-  newLine->node->value = lineContent().right(lineContent().size() - columnNumber_);
+  newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber_);
   modifiableLineContent()->truncate(columnNumber_);
-  line_ = newLine;
+  setLine(newLine);
   columnNumber_ = 0;
   return true;
 }

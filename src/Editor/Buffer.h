@@ -32,7 +32,11 @@ public:
 
 private:
   friend class BufferTest;
-  typedef Util::DRBTree<int, int, QString> Tree;
+  struct Line {
+    std::vector<Point*> points;
+    QString content;
+  };
+  typedef Util::DRBTree<int, int, Line> Tree;
 
   Buffer();
 
@@ -47,7 +51,12 @@ private:
 
 class Buffer::Point {
 public:
-  typedef Util::IteratorHelper<Point> Iterator;
+  struct UnsafeLine {
+    int lineNumber;
+    const QString* lineContent;
+  };
+
+  typedef Util::IteratorHelper<UnsafeLine> Iterator;
 
   class LinesForwardsIterable {
   public:
@@ -56,13 +65,14 @@ public:
 
   private:
     friend Point;
-    
+
     LinesForwardsIterable(Point* from) : from_(from) {}
 
     Point* from_;
   };
 
-  Point(Buffer* buffer) : buffer_(buffer) {}
+  Point(Buffer* buffer);
+  ~Point();
 
   bool isValid() const { return line_.isValid(); }
   const QString& lineContent() const { return *modifiableLineContent(); }
@@ -91,11 +101,16 @@ public:
 private:
   class IteratorImpl;
 
-  QString* modifiableLineContent() const { return &line_->node->value; }
+  QString* modifiableLineContent() const { return &line_->node->value.content; }
+
+  void setLine(Tree::Iterator newLine);
+  void detachFromLine();
+  void attachToLine();
 
   Buffer* const buffer_ = nullptr;
   Tree::Iterator line_;
   int columnNumber_ = 0;
+  int indexInLinePoints_ = -1;
 };
 
 }  // namespace Editor

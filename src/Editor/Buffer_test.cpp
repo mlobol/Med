@@ -31,8 +31,8 @@ TEST_F(BufferTest, IterateFromLineNumber) {
   ASSERT_TRUE(from.isValid());
   {
     std::vector<std::pair<int, std::string>> lines;
-    for (Buffer::Point line : from.linesForwards()) {
-      lines.emplace_back(line.lineNumber(), line.lineContent().trimmed().toStdString());
+    for (Buffer::Point::UnsafeLine line : from.linesForwards()) {
+      lines.emplace_back(line.lineNumber, line.lineContent->trimmed().toStdString());
     }
     EXPECT_THAT(lines,
                 testing::ElementsAre(testing::Pair(2, "second line"),
@@ -41,8 +41,8 @@ TEST_F(BufferTest, IterateFromLineNumber) {
   }
   {
     std::vector<std::pair<int, std::string>> lines;
-    for (Buffer::Point line : from.linesForwards()) {
-      lines.emplace_back(line.lineNumber(), line.lineContent().trimmed().toStdString());
+    for (Buffer::Point::UnsafeLine line : from.linesForwards()) {
+      lines.emplace_back(line.lineNumber, line.lineContent->trimmed().toStdString());
       // Breaking before reaching the end of the iterator should work.
       if (lines.size() == 2) break;
     }

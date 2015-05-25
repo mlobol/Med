@@ -42,12 +42,12 @@ public:
     page_.clear();
     int top = 0;
     cursorBounds_ = {};
-    for (Editor::Buffer::Point point : view_->view_->pageTop_.linesForwards()) {
-      page_.emplace_back(new QTextLayout(point.lineContent(), *textFont_));
+    for (Editor::Buffer::Point::UnsafeLine line : view_->view_->pageTop_.linesForwards()) {
+      page_.emplace_back(new QTextLayout(*line.lineContent, *textFont_));
       QTextLayout* layout = page_.back().get();
       top += leading;
       updateLayout(layout, top);
-      if (point.lineNumber() == insertionPoint().lineNumber()) updateCursorBounds(layout);
+      if (line.lineNumber == insertionPoint().lineNumber()) updateCursorBounds(layout);
       top = layout->boundingRect().bottom();
       if (top >= height()) break;
     }
@@ -103,16 +103,12 @@ public:
   }
 
   void updateAfterInsertionLineModified() {
+    if (!insertionPoint().isValid()) return;
     QTextLayout* layout = layoutForLineNumber(insertionPoint().lineNumber());
     if (!layout) return;
     int oldHeight = layout->boundingRect().height();
     int top = layout->boundingRect().top();
-    const QString* content = nullptr;
-    for (Editor::Buffer::Point point : view_->view_->insertionPoint_.linesForwards()) {
-      content = &point.lineContent();
-      break;
-    }
-    if (content) layout->setText(content ? *content : "");
+    layout->setText(insertionPoint().lineContent());
     updateLayout(layout, top);
     if (oldHeight == layout->boundingRect().height()) {
       updateCursorBounds(layout);
