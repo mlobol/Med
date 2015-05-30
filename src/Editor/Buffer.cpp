@@ -9,7 +9,7 @@ namespace Editor {
 
 class Buffer::Point::IteratorImpl : public Iterator::Impl {
 public:
-  IteratorImpl(const Point& from) : line_(from.line_) {}
+  IteratorImpl(const Point& from) : line_(from.bufferLine_) {}
 
   UnsafeLine get() const override { return {line_->key, &line_->node->value.content}; }
 
@@ -62,8 +62,8 @@ Buffer::Point::Point(Buffer* buffer) : buffer_(buffer) {}
 Buffer::Point::~Point() { setLine({}); }
 
 void Buffer::Point::setLine(Tree::Iterator newLine) {
-  if (line_.isValid()) {
-    std::vector<Point*>& points = line_->node->value.points;
+  if (bufferLine_.isValid()) {
+    std::vector<Point*>& points = bufferLine_->node->value.points;
     if (indexInLinePoints_ < points.size() - 1) {
       Point*& pointsEntry = points[indexInLinePoints_];
       if (pointsEntry != this) throw new std::logic_error("Internal Error.");
@@ -72,16 +72,16 @@ void Buffer::Point::setLine(Tree::Iterator newLine) {
     }
     points.pop_back();
   }
-  line_ = newLine;
-  if (line_.isValid()) {
-    std::vector<Point*>& points = line_->node->value.points;
+  bufferLine_ = newLine;
+  if (bufferLine_.isValid()) {
+    std::vector<Point*>& points = bufferLine_->node->value.points;
     indexInLinePoints_ = points.size();
     points.push_back(this);
   }
 }
 
 bool Buffer::Point::setColumnNumber(int columnNumber) {
-  if (!line_.isValid()) return false;
+  if (!bufferLine_.isValid()) return false;
   columnNumber_ = qBound(0, columnNumber, lineContent().size());
   return true;
 }
@@ -96,14 +96,14 @@ bool Buffer::Point::moveToLineStart() {
 }
 
 bool Buffer::Point::moveToLineEnd() {
-  if (!line_.isValid()) return false;
+  if (!bufferLine_.isValid()) return false;
   columnNumber_ = lineContent().size();
   return true;
 }
 
 bool Buffer::Point::moveUp() {
-  if (!line_.isValid()) return false;
-  Tree::Iterator newLine = line_;
+  if (!bufferLine_.isValid()) return false;
+  Tree::Iterator newLine = bufferLine_;
   --newLine;
   if (!newLine.isValid()) return false;
   setLine(newLine);
@@ -111,8 +111,8 @@ bool Buffer::Point::moveUp() {
 }
 
 bool Buffer::Point::moveDown() {
-  if (!line_.isValid()) return false;
-  Tree::Iterator newLine = line_;
+  if (!bufferLine_.isValid()) return false;
+  Tree::Iterator newLine = bufferLine_;
   ++newLine;
   if (!newLine.isValid()) return false;
   setLine(newLine);
@@ -126,37 +126,53 @@ bool Buffer::Point::moveLeft() {
 }
 
 bool Buffer::Point::moveRight() {
-  if (!line_.isValid()) return false;
+  if (!bufferLine_.isValid()) return false;
   if (columnNumber_ >= lineContent().size()) return moveDown() && moveToLineStart();
   ++columnNumber_;
   return true;
 }
 
 bool Buffer::Point::insertBefore(const QString& text) {
-  if (!line_.isValid()) return false;
-  modifiableLineContent()->insert(columnNumber_, text);
-  columnNumber_ += text.size();
+  if (!bufferLine_.isValid()) return false;
+  int columnNumber = columnNumber_;
+  line()->content.insert(columnNumber, text);
+  for (Point* point : line()->points) {
+    if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
+  }
   return true;
 }
 
 bool Buffer::Point::insertLineBreakBefore() {
-  if (!line_.isValid()) return false;
+  if (!bufferLine_.isValid()) return false;
   Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
-  newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber_);
-  modifiableLineContent()->truncate(columnNumber_);
-  setLine(newLine);
-  columnNumber_ = 0;
+  int columnNumber = columnNumber_;
+  newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber);
+  line()->content.truncate(columnNumber);
+  std::vector<Point*>& points = line()->points;
+  for (int point_index = 0; point_index < points.size();) {
+    Point* point = points[point_index];
+    if (point->columnNumber_ >= columnNumber) {
+      // Removes this point from the points vector.
+      point->setLine(newLine);
+      point->columnNumber_ -= columnNumber;
+      continue;
+    }
+    ++point_index;
+  }
   return true;
 }
 
 bool Buffer::Point::deleteCharAfter() {
-  if (!line_.isValid()) return false;
+  if (!bufferLine_.isValid()) return false;
   if (columnNumber_ == lineContent().size()) {
     // TODO: implement joining lines
     // if (!buffer_->joinLines(lineNumber_, 1)) return false;
     return false;
   } else {
-    modifiableLineContent()->remove(columnNumber_, 1);
+    line()->content.remove(columnNumber_, 1);
+    for (Point* point : line()->points) {
+      if (point->columnNumber_ > columnNumber_) --point->columnNumber_;
+    }
   }
   return true;
 }

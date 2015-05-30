@@ -74,14 +74,14 @@ public:
   Point(Buffer* buffer);
   ~Point();
 
-  bool isValid() const { return line_.isValid(); }
-  const QString& lineContent() const { return *modifiableLineContent(); }
+  bool isValid() const { return bufferLine_.isValid(); }
+  const QString& lineContent() const { return line()->content; }
 
   bool setColumnNumber(int columnNumber);
   void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
-  int lineNumber() const { return line_->key; }
+  int lineNumber() const { return bufferLine_->key; }
 
   bool moveToLineStart();
   bool moveToLineEnd();
@@ -101,14 +101,14 @@ public:
 private:
   class IteratorImpl;
 
-  QString* modifiableLineContent() const { return &line_->node->value.content; }
+  Line* line() const { return &bufferLine_->node->value; }
 
   void setLine(Tree::Iterator newLine);
   void detachFromLine();
   void attachToLine();
 
   Buffer* const buffer_ = nullptr;
-  Tree::Iterator line_;
+  Tree::Iterator bufferLine_;
   int columnNumber_ = 0;
   int indexInLinePoints_ = -1;
 };
