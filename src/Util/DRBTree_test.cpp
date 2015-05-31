@@ -23,7 +23,7 @@ protected:
           checkTreeStructure(child);
         }
       }
-      
+
       /** Checks that the children of all red descendants of this node are black. */
       void checkChildrenColor(const typename Tree::Node* node) {
         for (const typename Tree::Node* child : node->children) {
@@ -32,7 +32,7 @@ protected:
           checkChildrenColor(child);
         }
       }
-      
+
       /** Checks that the number of black nodes from this node to every one of its descendant leaves is the same. Returns that number, plus 1 if the node is black. */
       int checkBlacksToLeaf(const typename Tree::Node* node) {
         if (node == nullptr) return 0;
@@ -43,8 +43,8 @@ protected:
         if (childrenBlacksToLeaf.empty()) return 0;
         return *childrenBlacksToLeaf.begin() + (node->color == DRBTreeDefs::NodeColor::BLACK ? 1 : 0);
       }
-      
-      /** Checks that the subtree deltas of this node and all its descendants are correct. */ 
+
+      /** Checks that the subtree deltas of this node and all its descendants are correct. */
       void checkSubtreeDeltas(const typename Tree::Node* node) {
         typename Tree::Delta childrenSubtreeDeltas = 0;
         for (const typename Tree::Node* child : node->children)
@@ -54,7 +54,7 @@ protected:
           checkSubtreeDeltas(child);
       }
     };
-    
+
     InvariantChecker checker;
     if (tree.root != nullptr) {
       // The root must be black.
@@ -66,7 +66,6 @@ protected:
     }
   }
 
-  
   template<typename Keys>
   void buildAndTestTree(const Keys& keys) {
     typedef typename Keys::value_type Key;
@@ -91,8 +90,17 @@ protected:
       }
       EXPECT_THAT(actualKeys, testing::ContainerEq(insertedKeys));
     }
+    for (const Key& key : keys) {
+      typename Tree::Iterator it = tree.get(key, {});
+      ASSERT_TRUE(it.isValid());
+      EXPECT_EQ(it->key, key);
+      EXPECT_EQ(it->node->value->keyAtInsertion, key);
+      it->node->detach();
+      delete it->node;
+      checkInvariants(tree);
+    }
   }
-  
+
   template<typename Type>
   void buildAndTestTreeWithKeys(const std::initializer_list<Type>& keys) {
     buildAndTestTree<std::initializer_list<Type>>(keys);
@@ -120,11 +128,11 @@ TEST_F(DRBTreeTest, DoubleRotationAtRoot) {
 }
 
 TEST_F(DRBTreeTest, Permutations) {
-  std::vector<int> keys = {10, 51, 12, 73, 95, 34, 45};
+  std::vector<int> keys = {10, 12, 34, 45, 51, 73, 95};
   do {
     buildAndTestTree(keys);
   } while (std::next_permutation(keys.begin(), keys.end()));
 }
-  
+
 }  // namespace Util
 }  // namespace Med

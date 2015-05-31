@@ -420,6 +420,8 @@ private:
   // If @moved and @detached are the same node, it is simply detached from the tree.
   void moveAndDetach(Node* moved, Node* detached) {
     Node* const child = moved->children.onlyChild();
+    // Point the child to the parent.
+    if (child != nullptr) child->parent = moved->parent;
     // Point the parent to the child.
     if (moved->parent == nullptr)
       root = child;
@@ -427,8 +429,6 @@ private:
       moved->parent->children.get(moved->parentSide()) = child;
       moved->parent->updateSubtreeDelta();
     }
-    // Point the child to the parent.
-    if (child != nullptr) child->parent = moved->parent;
     if (moved != detached) {
       moved->color = detached->color;
       moved->parent = detached->parent;
@@ -439,7 +439,8 @@ private:
         moved->parent->updateSubtreeDelta();
       }
       moved->children = detached->children;
-      moved->children.reparent(moved);
+      if (moved->children.get(Side::LEFT)) moved->children.get(Side::LEFT)->parent = moved;
+      if (moved->children.get(Side::RIGHT)) moved->children.get(Side::RIGHT)->parent = moved;
       moved->updateSubtreeDelta();
     }
 
@@ -449,6 +450,13 @@ private:
   }
 
   void detach(Node* node) {
+    Node* predecessor = node->adjacent(Side::LEFT);
+    if (predecessor) {
+      predecessor->delta += node->delta;
+      predecessor->updateSubtreeDelta();
+    } else {
+      extremeDelta(Side::LEFT) += node->delta;
+    }
     Node* current = nullptr;
     if (node->children.get(Side::LEFT) != nullptr &&
         node->children.get(Side::RIGHT) != nullptr) {
@@ -459,8 +467,8 @@ private:
       // We are going to delete root and it only has one child,
       // so make that child the new root.
       root = node->children.onlyChild();
-      node->children.update(Side::LEFT, nullptr);
-      node->children.update(Side::RIGHT, nullptr);
+      node->children.get(Side::LEFT) = nullptr;
+      node->children.get(Side::RIGHT) = nullptr;
       if (root != nullptr) {
         root->color = NodeColor::BLACK;
         root->parent = nullptr;
@@ -482,37 +490,37 @@ private:
 
     if (savedColor == NodeColor::RED) return;
     current = parent;
-    if (Node::isRed(current->children(side))) {
-      current->children(side).color = NodeColor::BLACK;
+    if (Node::isRed(current->children.get(side))) {
+      current->children.get(side)->color = NodeColor::BLACK;
     } else {
       while (true) {
-        Node* sibling = current->children(other(side));
+        Node* sibling = current->children.get(other(side));
 
         // Case reduction, remove red sibling.
-        if (isRed(sibling)) {
+        if (Node::isRed(sibling)) {
           rotateSingle(current, side);
-          sibling = current->children(other(side));
+          sibling = current->children.get(other(side));
         }
 
         if (sibling != nullptr) {
-          if (!isRed(sibling->children(Side::LEFT)) &&
-              !isRed(sibling->children(Side::RIGHT))) {
-            bool done = isRed(current);
+          if (!Node::isRed(sibling->children.get(Side::LEFT)) &&
+              !Node::isRed(sibling->children.get(Side::RIGHT))) {
+            bool done = Node::isRed(current);
             current->color = NodeColor::BLACK;
             sibling->color = NodeColor::RED;
             if (done) break;
           } else {
             savedColor = current->color;
 
-            if (isRed(sibling->children(other(side))))
+            if (Node::isRed(sibling->children.get(other(side))))
               rotateSingle(current, side);
             else
               rotateDouble(current, side);
             current = current->parent;
 
             current->color = savedColor;
-            current->children(Side::LEFT).color = NodeColor::BLACK;
-            current->children(Side::RIGHT).color = NodeColor::BLACK;
+            current->children.get(Side::LEFT)->color = NodeColor::BLACK;
+            current->children.get(Side::RIGHT)->color = NodeColor::BLACK;
             break;
           }
         }
@@ -521,7 +529,7 @@ private:
           root = current;
           break;
         } else {
-          side = current->parentSide;
+          side = current->parentSide();
           current = current->parent;
         }
       }
