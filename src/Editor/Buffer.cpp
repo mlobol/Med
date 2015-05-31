@@ -134,7 +134,7 @@ bool Buffer::Point::moveRight() {
 
 bool Buffer::Point::insertBefore(const QString& text) {
   if (!bufferLine_.isValid()) return false;
-  int columnNumber = columnNumber_;
+  const int columnNumber = columnNumber_;
   line()->content.insert(columnNumber, text);
   for (Point* point : line()->points) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
@@ -145,7 +145,7 @@ bool Buffer::Point::insertBefore(const QString& text) {
 bool Buffer::Point::insertLineBreakBefore() {
   if (!bufferLine_.isValid()) return false;
   Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
-  int columnNumber = columnNumber_;
+  const int columnNumber = columnNumber_;
   newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber);
   line()->content.truncate(columnNumber);
   std::vector<Point*>& points = line()->points;
@@ -165,9 +165,18 @@ bool Buffer::Point::insertLineBreakBefore() {
 bool Buffer::Point::deleteCharAfter() {
   if (!bufferLine_.isValid()) return false;
   if (columnNumber_ == lineContent().size()) {
-    // TODO: implement joining lines
-    // if (!buffer_->joinLines(lineNumber_, 1)) return false;
-    return false;
+    Tree::Iterator nextBufferLine = bufferLine_;
+    ++nextBufferLine;
+    if (!nextBufferLine.isValid()) return false;
+    Line& nextLine = nextBufferLine->node->value;
+    line()->content.append(nextLine.content);
+    while (!nextLine.points.empty()) {
+      Point* point = nextLine.points.back();
+      point->setLine(bufferLine_);
+      point->columnNumber_ += columnNumber_;
+    }
+    nextBufferLine->node->detach();
+    delete nextBufferLine->node;
   } else {
     line()->content.remove(columnNumber_, 1);
     for (Point* point : line()->points) {
