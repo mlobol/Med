@@ -147,7 +147,7 @@ bool Buffer::Point::insertLineBreakBefore() {
   if (!bufferLine_) return false;
   Tree::Node* newLine = buffer_->insertLine(lineNumber() + 1)->node;
   const int columnNumber = columnNumber_;
-  Q_ASSERT(columnNumber_ <= lineContent().size());
+  Q_ASSERT(columnNumber <= lineContent().size());
   newLine->value.content = lineContent().right(lineContent().size() - columnNumber);
   line()->content.truncate(columnNumber);
   std::vector<Point*>& points = line()->points;
@@ -155,12 +155,15 @@ bool Buffer::Point::insertLineBreakBefore() {
     Point* point = points[point_index];
     if (point->columnNumber_ >= columnNumber) {
       // Removes this point from the points vector.
-      point->setLine(newLine);
       point->columnNumber_ -= columnNumber;
+      point->setLine(newLine);
       continue;
     }
     ++point_index;
   }
+
+
+
   return true;
 }
 
@@ -174,8 +177,8 @@ bool Buffer::Point::deleteCharAfter() {
     line()->content.append(nextLine.content);
     while (!nextLine.points.empty()) {
       Point* point = nextLine.points.back();
-      point->setLine(bufferLine_);
       point->columnNumber_ += columnNumber_;
+      point->setLine(bufferLine_);
     }
     nextBufferLine->detach();
     delete nextBufferLine;
