@@ -77,6 +77,8 @@ void Buffer::Point::setLine(Tree::Iterator newLine) {
     std::vector<Point*>& points = bufferLine_->node->value.points;
     indexInLinePoints_ = points.size();
     points.push_back(this);
+    // Make sure the column number is within limits.
+    setColumnNumber(columnNumber_);
   }
 }
 
@@ -135,6 +137,7 @@ bool Buffer::Point::moveRight() {
 bool Buffer::Point::insertBefore(const QString& text) {
   if (!bufferLine_.isValid()) return false;
   const int columnNumber = columnNumber_;
+  Q_ASSERT(columnNumber_ <= lineContent().size());
   line()->content.insert(columnNumber, text);
   for (Point* point : line()->points) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
@@ -146,6 +149,7 @@ bool Buffer::Point::insertLineBreakBefore() {
   if (!bufferLine_.isValid()) return false;
   Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
   const int columnNumber = columnNumber_;
+  Q_ASSERT(columnNumber_ <= lineContent().size());
   newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber);
   line()->content.truncate(columnNumber);
   std::vector<Point*>& points = line()->points;
@@ -164,6 +168,7 @@ bool Buffer::Point::insertLineBreakBefore() {
 
 bool Buffer::Point::deleteCharAfter() {
   if (!bufferLine_.isValid()) return false;
+  Q_ASSERT(columnNumber_ <= lineContent().size());
   if (columnNumber_ == lineContent().size()) {
     Tree::Iterator nextBufferLine = bufferLine_;
     ++nextBufferLine;
