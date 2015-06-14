@@ -11,14 +11,14 @@ class Buffer::Point::IteratorImpl : public Iterator::Impl {
 public:
   IteratorImpl(const Point& from) : line_(from.bufferLine_) {}
 
-  const QString* get() const override { return &line_->node->value.content; }
+  const QString* get() const override { return &line_->value.content; }
 
   bool advance() override {
-    ++line_;
-    return line_.isValid();
+    line_ = line_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+    return line_;
   }
 
-  Tree::Iterator line_;
+  Tree::Node* line_;
 };
 
 Buffer::Buffer() {}
@@ -61,9 +61,9 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
 Buffer::Point::Point(Buffer* buffer) : buffer_(buffer) {}
 Buffer::Point::~Point() { setLine({}); }
 
-void Buffer::Point::setLine(Tree::Iterator newLine) {
-  if (bufferLine_.isValid()) {
-    std::vector<Point*>& points = bufferLine_->node->value.points;
+void Buffer::Point::setLine(Tree::Node* newLine) {
+  if (bufferLine_) {
+    std::vector<Point*>& points = bufferLine_->value.points;
     if (indexInLinePoints_ < points.size() - 1) {
       Point*& pointsEntry = points[indexInLinePoints_];
       if (pointsEntry != this) throw new std::logic_error("Internal Error.");
@@ -73,8 +73,8 @@ void Buffer::Point::setLine(Tree::Iterator newLine) {
     points.pop_back();
   }
   bufferLine_ = newLine;
-  if (bufferLine_.isValid()) {
-    std::vector<Point*>& points = bufferLine_->node->value.points;
+  if (bufferLine_) {
+    std::vector<Point*>& points = bufferLine_->value.points;
     indexInLinePoints_ = points.size();
     points.push_back(this);
     // Make sure the column number is within limits.
@@ -83,13 +83,13 @@ void Buffer::Point::setLine(Tree::Iterator newLine) {
 }
 
 bool Buffer::Point::setColumnNumber(int columnNumber) {
-  if (!bufferLine_.isValid()) return false;
+  if (!bufferLine_) return false;
   columnNumber_ = qBound(0, columnNumber, lineContent().size());
   return true;
 }
 
 void Buffer::Point::setLineNumber(int lineNumber) {
-  setLine(buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1)));
+  setLine(buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1))->node);
 }
 
 bool Buffer::Point::moveToLineStart() {
@@ -98,25 +98,23 @@ bool Buffer::Point::moveToLineStart() {
 }
 
 bool Buffer::Point::moveToLineEnd() {
-  if (!bufferLine_.isValid()) return false;
+  if (!bufferLine_) return false;
   columnNumber_ = lineContent().size();
   return true;
 }
 
 bool Buffer::Point::moveUp() {
-  if (!bufferLine_.isValid()) return false;
-  Tree::Iterator newLine = bufferLine_;
-  --newLine;
-  if (!newLine.isValid()) return false;
+  if (!bufferLine_) return false;
+  Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::LEFT);
+  if (!newLine) return false;
   setLine(newLine);
   return true;
 }
 
 bool Buffer::Point::moveDown() {
-  if (!bufferLine_.isValid()) return false;
-  Tree::Iterator newLine = bufferLine_;
-  ++newLine;
-  if (!newLine.isValid()) return false;
+  if (!bufferLine_) return false;
+  Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+  if (!newLine) return false;
   setLine(newLine);
   return true;
 }
@@ -128,14 +126,14 @@ bool Buffer::Point::moveLeft() {
 }
 
 bool Buffer::Point::moveRight() {
-  if (!bufferLine_.isValid()) return false;
+  if (!bufferLine_) return false;
   if (columnNumber_ >= lineContent().size()) return moveDown() && moveToLineStart();
   ++columnNumber_;
   return true;
 }
 
 bool Buffer::Point::insertBefore(const QString& text) {
-  if (!bufferLine_.isValid()) return false;
+  if (!bufferLine_) return false;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber_ <= lineContent().size());
   line()->content.insert(columnNumber, text);
@@ -146,11 +144,11 @@ bool Buffer::Point::insertBefore(const QString& text) {
 }
 
 bool Buffer::Point::insertLineBreakBefore() {
-  if (!bufferLine_.isValid()) return false;
-  Tree::Iterator newLine = buffer_->insertLine(lineNumber() + 1);
+  if (!bufferLine_) return false;
+  Tree::Node* newLine = buffer_->insertLine(lineNumber() + 1)->node;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber_ <= lineContent().size());
-  newLine->node->value.content = lineContent().right(lineContent().size() - columnNumber);
+  newLine->value.content = lineContent().right(lineContent().size() - columnNumber);
   line()->content.truncate(columnNumber);
   std::vector<Point*>& points = line()->points;
   for (int point_index = 0; point_index < points.size();) {
@@ -167,22 +165,21 @@ bool Buffer::Point::insertLineBreakBefore() {
 }
 
 bool Buffer::Point::deleteCharAfter() {
-  if (!bufferLine_.isValid()) return false;
+  if (!bufferLine_) return false;
   Q_ASSERT(columnNumber_ <= lineContent().size());
   if (columnNumber_ == lineContent().size()) {
-    Tree::Iterator nextBufferLine = bufferLine_;
-    ++nextBufferLine;
-    if (!nextBufferLine.isValid()) return false;
-    Line& nextLine = nextBufferLine->node->value;
+    Tree::Node* nextBufferLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+    if (!nextBufferLine) return false;
+    Line& nextLine = nextBufferLine->value;
     line()->content.append(nextLine.content);
     while (!nextLine.points.empty()) {
       Point* point = nextLine.points.back();
       point->setLine(bufferLine_);
       point->columnNumber_ += columnNumber_;
     }
-    nextBufferLine->node->detach();
-    delete nextBufferLine->node;
-    bufferLine_->node->setDelta(1);
+    nextBufferLine->detach();
+    delete nextBufferLine;
+    bufferLine_->setDelta(1);
   } else {
     line()->content.remove(columnNumber_, 1);
     for (Point* point : line()->points) {

@@ -69,14 +69,14 @@ public:
   Point(Buffer* buffer);
   ~Point();
 
-  bool isValid() const { return bufferLine_.isValid(); }
+  bool isValid() const { return bufferLine_; }
   const QString& lineContent() const { return line()->content; }
 
   bool setColumnNumber(int columnNumber);
   void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
-  int lineNumber() const { return bufferLine_->node->key(Util::DRBTreeDefs::Side::LEFT); }
+  int lineNumber() const { return bufferLine_->key(Util::DRBTreeDefs::Side::LEFT); }
 
   bool moveToLineStart();
   bool moveToLineEnd();
@@ -96,14 +96,14 @@ public:
 private:
   class IteratorImpl;
 
-  Line* line() const { return &bufferLine_->node->value; }
+  Line* line() const { return &bufferLine_->value; }
 
-  void setLine(Tree::Iterator newLine);
+  void setLine(Tree::Node* newLine);
   void detachFromLine();
   void attachToLine();
 
   Buffer* const buffer_ = nullptr;
-  Tree::Iterator bufferLine_;
+  Tree::Node* bufferLine_ = nullptr;
   int columnNumber_ = 0;
   int indexInLinePoints_ = -1;
 };
