@@ -161,9 +161,6 @@ bool Buffer::Point::insertLineBreakBefore() {
     }
     ++point_index;
   }
-
-
-
   return true;
 }
 
