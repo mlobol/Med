@@ -83,6 +83,7 @@ protected:
       std::set<Key> actualKeys;
       for (typename Tree::Entry treeEntry : tree) {
         actualKeys.insert(treeEntry.key);
+        EXPECT_EQ(treeEntry.key, treeEntry.node->key(DRBTreeDefs::Side::LEFT));
         EXPECT_EQ(treeEntry.node->value->keyAtInsertion, treeEntry.key);
         typename Tree::Iterator found = tree.get(treeEntry.key, {});
         EXPECT_EQ(treeEntry.key, found->key);

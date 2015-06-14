@@ -610,13 +610,10 @@ public:
   Key key(Side side) {
     Delta key = children.subtreeDelta(side);
     for (Node* node = this; node->parent != nullptr; node = node->parent) {
-      if (node->parentSide() != side) key += node->nodePlusSubtreeDelta(side);
+      if (node->parentSide() != side) key += node->parent->nodePlusSubtreeDelta(side);
     }
-    return zeroKey + key;
+    return tree->extremeDelta(side) + key;
   }
-
-  /** Returns the node's key delta, i.e. the difference between this node's key and the next node's key. */
-  Delta getDelta() { return delta; }
 
   /** Returns the descendant of this node at the given end of the key range. */
   Node* descendantAtEnd(Side side) {
