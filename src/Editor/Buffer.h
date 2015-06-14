@@ -51,12 +51,7 @@ private:
 
 class Buffer::Point {
 public:
-  struct UnsafeLine {
-    int lineNumber;
-    const QString* lineContent;
-  };
-
-  typedef Util::IteratorHelper<UnsafeLine> Iterator;
+  typedef Util::IteratorHelper<const QString*> Iterator;
 
   class LinesForwardsIterable {
   public:
@@ -81,7 +76,7 @@ public:
   void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
-  int lineNumber() const { return bufferLine_->key; }
+  int lineNumber() const { return bufferLine_->node->key(Util::DRBTreeDefs::Side::LEFT); }
 
   bool moveToLineStart();
   bool moveToLineEnd();

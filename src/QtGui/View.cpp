@@ -42,12 +42,12 @@ public:
     page_.clear();
     int top = 0;
     cursorBounds_ = {};
-    for (Editor::Buffer::Point::UnsafeLine line : view_->view_->pageTop_.linesForwards()) {
-      page_.emplace_back(new QTextLayout(*line.lineContent, *textFont_));
+    for (const QString* lineContent : view_->view_->pageTop_.linesForwards()) {
+      page_.emplace_back(new QTextLayout(*lineContent, *textFont_));
       QTextLayout* layout = page_.back().get();
       top += leading;
       updateLayout(layout, top);
-      if (line.lineNumber == insertionPoint().lineNumber()) updateCursorBounds(layout);
+      if (lineContent == &insertionPoint().lineContent()) updateCursorBounds(layout);
       top = layout->boundingRect().bottom();
       if (top >= height()) break;
     }
@@ -67,12 +67,11 @@ public:
 
   void paintEvent(QPaintEvent* event) override {
     QPainter painter(this);
-    int lineNumber = view_->view_->pageTop_.lineNumber() - 1;
-    for (auto& layout : page_) {
-      ++lineNumber;
-      layout->draw(&painter, {0, 0});
-      if (cursorOn_ && lineNumber == insertionPoint().lineNumber() && hasFocus()) {
-        layout->drawCursor(&painter, {0, 0}, insertionPoint().columnNumber(), 2);
+    for (auto& layout : page_) layout->draw(&painter, {0, 0});
+    if (cursorOn_ && hasFocus()) {
+      QTextLayout* insertionPointLayout = layoutForLineNumber(insertionPoint().lineNumber());
+      if (insertionPointLayout) {
+        insertionPointLayout->drawCursor(&painter, {0, 0}, insertionPoint().columnNumber(), 2);
       }
     }
     QWidget::paintEvent(event);

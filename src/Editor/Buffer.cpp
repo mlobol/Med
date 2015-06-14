@@ -11,7 +11,7 @@ class Buffer::Point::IteratorImpl : public Iterator::Impl {
 public:
   IteratorImpl(const Point& from) : line_(from.bufferLine_) {}
 
-  UnsafeLine get() const override { return {line_->key, &line_->node->value.content}; }
+  const QString* get() const override { return &line_->node->value.content; }
 
   bool advance() override {
     ++line_;
