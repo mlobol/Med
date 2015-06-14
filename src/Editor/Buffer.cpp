@@ -182,6 +182,7 @@ bool Buffer::Point::deleteCharAfter() {
     }
     nextBufferLine->node->detach();
     delete nextBufferLine->node;
+    bufferLine_->node->setDelta(1);
   } else {
     line()->content.remove(columnNumber_, 1);
     for (Point* point : line()->points) {
