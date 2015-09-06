@@ -72,6 +72,8 @@ public:
   bool isValid() const { return bufferLine_; }
   const QString& lineContent() const { return line()->content; }
 
+  void reset() { setLine(nullptr); }
+  void moveTo(const Point& point);
   bool setColumnNumber(int columnNumber);
   void setLineNumber(int lineNumber);
 
@@ -95,6 +97,9 @@ public:
 
 private:
   class IteratorImpl;
+
+  Point(const Point&) = delete;
+  Point& operator=(const Point&) = delete;
 
   Line* line() const { return &bufferLine_->value; }
 

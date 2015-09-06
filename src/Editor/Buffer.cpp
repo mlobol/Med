@@ -92,6 +92,11 @@ void Buffer::Point::setLineNumber(int lineNumber) {
   setLine(buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1))->node);
 }
 
+void Buffer::Point::moveTo(const Point& point) {
+  setLine(point.bufferLine_);
+  setColumnNumber(point.columnNumber_);
+}
+
 bool Buffer::Point::moveToLineStart() {
   columnNumber_ = 0;
   return true;
