@@ -7,9 +7,9 @@
 namespace Med {
 namespace Editor {
 
-class Buffer::Point::IteratorImpl : public Iterator::Impl {
+class Buffer::Point::LineIteratorImpl : public LineIterator::Impl {
 public:
-  IteratorImpl(const Point& from) : line_(from.bufferLine_) {}
+  LineIteratorImpl(const Point& from) : line_(from.bufferLine_) {}
 
   const QString* get() const override { return &line_->value.content; }
 
@@ -58,14 +58,20 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   return buffer;
 }
 
-Buffer::Point::Point(Buffer* buffer) : buffer_(buffer) {}
+Buffer::Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
 Buffer::Point::~Point() { setLine({}); }
 
+void Buffer::Point::sortPair(Point* left, Point* right, Point** first, Point** second) {
+  const bool leftIsFirst = left->bufferLine_ != right->bufferLine_ ? left->lineNumber() < right->lineNumber() : left->columnNumber() < right->columnNumber();
+  *first = leftIsFirst ? left : right;
+  *second = leftIsFirst ? right : left;
+}
+
 void Buffer::Point::setLine(Tree::Node* newLine) {
-  if (bufferLine_) {
-    std::vector<Point*>& points = bufferLine_->value.points;
+  if (safe_ && bufferLine_) {
+    std::vector<SafePoint*>& points = bufferLine_->value.points;
     if (indexInLinePoints_ < points.size() - 1) {
-      Point*& pointsEntry = points[indexInLinePoints_];
+      SafePoint*& pointsEntry = points[indexInLinePoints_];
       if (pointsEntry != this) throw new std::logic_error("Internal Error.");
       pointsEntry = points.back();
       pointsEntry->indexInLinePoints_ = indexInLinePoints_;
@@ -73,10 +79,10 @@ void Buffer::Point::setLine(Tree::Node* newLine) {
     points.pop_back();
   }
   bufferLine_ = newLine;
-  if (bufferLine_) {
-    std::vector<Point*>& points = bufferLine_->value.points;
+  if (safe_ && bufferLine_) {
+    std::vector<SafePoint*>& points = bufferLine_->value.points;
     indexInLinePoints_ = points.size();
-    points.push_back(this);
+    points.push_back(static_cast<SafePoint*>(this));
     // Make sure the column number is within limits.
     setColumnNumber(columnNumber_);
   }
@@ -155,7 +161,7 @@ bool Buffer::Point::insertLineBreakBefore() {
   Q_ASSERT(columnNumber <= lineContent().size());
   newLine->value.content = lineContent().right(lineContent().size() - columnNumber);
   line()->content.truncate(columnNumber);
-  std::vector<Point*>& points = line()->points;
+  std::vector<SafePoint*>& points = line()->points;
   for (int point_index = 0; point_index < points.size();) {
     Point* point = points[point_index];
     if (point->columnNumber_ >= columnNumber) {
@@ -170,32 +176,59 @@ bool Buffer::Point::insertLineBreakBefore() {
 }
 
 bool Buffer::Point::deleteCharAfter() {
-  if (!bufferLine_) return false;
-  Q_ASSERT(columnNumber_ <= lineContent().size());
-  if (columnNumber_ == lineContent().size()) {
-    Tree::Node* nextBufferLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
-    if (!nextBufferLine) return false;
-    Line& nextLine = nextBufferLine->value;
-    line()->content.append(nextLine.content);
-    while (!nextLine.points.empty()) {
-      Point* point = nextLine.points.back();
-      point->columnNumber_ += columnNumber_;
-      point->setLine(bufferLine_);
+  if (!isValid()) return false;
+  TempPoint after(buffer_);
+  after.moveTo(*this);
+  after.moveRight();
+  return deleteTo(&after);
+}
+
+bool Buffer::Point::deleteTo(Point* other) {
+  if (!isValid() || !other->isValid()) return false;
+  Point* from = nullptr;
+  Point* to = nullptr;
+  sortPair(this, other, &from, &to);
+  if (from->bufferLine_ == to->bufferLine_) {
+    from->line()->content.remove(from->columnNumber(), to->columnNumber() - from->columnNumber());
+    for (SafePoint* point : from->bufferLine_->value.points) {
+      if (point->columnNumber() > to->columnNumber()) {
+        point->columnNumber_ -= to->columnNumber() - from->columnNumber();
+      } else if (point->columnNumber() > from->columnNumber()) {
+        point->columnNumber_ = from->columnNumber();
+      }
     }
-    nextBufferLine->detach();
-    delete nextBufferLine;
-    bufferLine_->setDelta(1);
   } else {
-    line()->content.remove(columnNumber_, 1);
-    for (Point* point : line()->points) {
-      if (point->columnNumber_ > columnNumber_) --point->columnNumber_;
+    QString& fromContent = from->bufferLine_->value.content;
+    fromContent.truncate(from->columnNumber());
+    fromContent.append(to->bufferLine_->value.content.mid(to->columnNumber()));
+    for (SafePoint* point : from->bufferLine_->value.points) {
+      if (point->columnNumber() > from->columnNumber()) {
+        point->columnNumber_ = from->columnNumber();
+      }
+    }
+    while (true) {
+      Tree::Node* bufferLine = from->bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+      const bool isLast = bufferLine == to->bufferLine_;
+      while (!bufferLine->value.points.empty()) {
+        SafePoint* point = bufferLine->value.points.back();
+        if (isLast && point->columnNumber() > to->columnNumber()) {
+          point->columnNumber_ += from->columnNumber() - to->columnNumber();
+        } else {
+          point->columnNumber_ = from->columnNumber();
+        }
+        point->setLine(from->bufferLine_);
+      }
+      bufferLine->detach();
+      delete bufferLine;
+      from->bufferLine_->setDelta(1);
+      if (isLast) break;
     }
   }
   return true;
 }
 
-Buffer::Point::Iterator Buffer::Point::LinesForwardsIterable::begin() {
-  return {std::make_unique<IteratorImpl>(*from_)};
+Buffer::Point::LineIterator Buffer::Point::LinesForwardsIterable::begin() {
+  return {std::make_unique<LineIteratorImpl>(*from_)};
 }
 
 }  // namespace Editor

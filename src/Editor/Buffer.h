@@ -21,6 +21,8 @@ class IOException : public std::runtime_error {
 class Buffer {
 public:
   class Point;
+  class SafePoint;
+  class TempPoint;
 
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
 
@@ -33,7 +35,7 @@ public:
 private:
   friend class BufferTest;
   struct Line {
-    std::vector<Point*> points;
+    std::vector<SafePoint*> points;
     QString content;
   };
   typedef Util::DRBTree<int, int, Line> Tree;
@@ -51,12 +53,12 @@ private:
 
 class Buffer::Point {
 public:
-  typedef Util::IteratorHelper<const QString*> Iterator;
+  typedef Util::IteratorHelper<const QString*> LineIterator;
 
   class LinesForwardsIterable {
   public:
-    Iterator begin();
-    Iterator end() { return {nullptr}; }
+    LineIterator begin();
+    LineIterator end() { return {nullptr}; }
 
   private:
     friend Point;
@@ -66,7 +68,6 @@ public:
     Point* from_;
   };
 
-  Point(Buffer* buffer);
   ~Point();
 
   bool isValid() const { return bufferLine_; }
@@ -78,7 +79,10 @@ public:
   void setLineNumber(int lineNumber);
 
   int columnNumber() const { return columnNumber_; }
-  int lineNumber() const { return bufferLine_->key(Util::DRBTreeDefs::Side::LEFT); }
+  int lineNumber() const {
+    // TODO: cache line number and only compute it if the buffer changed since last time.
+    return bufferLine_->key(Util::DRBTreeDefs::Side::LEFT);
+  }
 
   bool moveToLineStart();
   bool moveToLineEnd();
@@ -92,11 +96,19 @@ public:
 
   bool deleteCharBefore() { return moveLeft() && deleteCharAfter(); }
   bool deleteCharAfter();
+  bool deleteTo(Point* point);
+
+  static void sortPair(Point* left, Point* right, Point** first, Point** second);
 
   LinesForwardsIterable linesForwards() { return LinesForwardsIterable(this); }
 
 private:
-  class IteratorImpl;
+  class LineIteratorImpl;
+
+  friend class SafePoint;
+  friend class TempPoint;
+
+  Point(bool safe, Buffer* buffer);
 
   Point(const Point&) = delete;
   Point& operator=(const Point&) = delete;
@@ -107,10 +119,21 @@ private:
   void detachFromLine();
   void attachToLine();
 
+  const bool safe_;
   Buffer* const buffer_ = nullptr;
   Tree::Node* bufferLine_ = nullptr;
   int columnNumber_ = 0;
   int indexInLinePoints_ = -1;
+};
+
+class Buffer::SafePoint : public Point {
+public:
+  SafePoint(Buffer* buffer) : Point(true, buffer) {}
+};
+
+class Buffer::TempPoint : public Point {
+public:
+  TempPoint(Buffer* buffer) : Point(false, buffer) {}
 };
 
 }  // namespace Editor

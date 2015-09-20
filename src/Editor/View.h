@@ -8,9 +8,9 @@ namespace Editor {
 
 class View {
 public:
-  Buffer::Point insertionPoint_;
-  Buffer::Point selectionPoint_;
-  Buffer::Point pageTop_;
+  Buffer::SafePoint insertionPoint_;
+  Buffer::SafePoint selectionPoint_;
+  Buffer::SafePoint pageTop_;
 
   View(Buffer* buffer);
 

@@ -25,6 +25,10 @@ public:
     });
   }
 
+  Editor::Buffer::SafePoint& insertionPoint() { return view_->view_->insertionPoint_; }
+  Editor::Buffer::SafePoint& selectionPoint() { return view_->view_->selectionPoint_; }
+  Editor::Buffer::SafePoint& pageTop() { return view_->view_->pageTop_; }
+
   bool event(QEvent* event) override {
     if (event->type() == QEvent::KeyPress) {
       QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
@@ -37,12 +41,13 @@ public:
   }
 
   void resetPage() {
+    page_.clear();
+    if (!pageTop().isValid()) return;
     const int leading = textFontMetrics_->leading();
     QPointF linePos(0, 0);
-    page_.clear();
     int top = 0;
     cursorBounds_ = {};
-    for (const QString* lineContent : view_->view_->pageTop_.linesForwards()) {
+    for (const QString* lineContent : pageTop().linesForwards()) {
       page_.emplace_back();
       Line& line = page_.back();
       line.layout.reset(new QTextLayout(*lineContent, *textFont_));
@@ -60,6 +65,7 @@ public:
     layout->setTextOption(textOption);
     layout->setCacheEnabled(true);
     layout->beginLayout();
+    // FIXME: this also needs to update selections!
     QTextLine layoutLine = layout->createLine();
     layoutLine.setLineWidth(layout->text().size());
     layoutLine.setPosition(QPointF(0, top));
@@ -86,11 +92,8 @@ public:
     QWidget::paintEvent(event);
   }
 
-  Editor::Buffer::Point& insertionPoint() { return view_->view_->insertionPoint_; }
-  Editor::Buffer::Point& selectionPoint() { return view_->view_->selectionPoint_; }
-
   QTextLayout* layoutForLineNumber(int lineNumber) {
-    int layoutIndex = lineNumber - view_->view_->pageTop_.lineNumber();
+    int layoutIndex = lineNumber - pageTop().lineNumber();
     if (layoutIndex < 0 || layoutIndex >= page_.size()) return nullptr;
     return page_.at(layoutIndex).layout.get();
   }
@@ -159,13 +162,15 @@ public:
       if (selectionUpdateOneBoundLineNumber >= 0 && selectionUpdateOtherBoundLineNumber < 0) selectionUpdateOtherBoundLineNumber = insertionPointLineNumber;
     }
     if (selectionUpdateOtherBoundLineNumber >= 0) {
-      const int pageTopLineNumber = view_->view_->pageTop_.lineNumber();
+      const int pageTopLineNumber = pageTop().lineNumber();
       const bool hasSelection = insertionPoint().isValid() && selectionPoint().isValid();
       const int insertionPointLineNumber = hasSelection ? insertionPoint().lineNumber() : -1;
       const int selectionPointLineNumber = hasSelection ? selectionPoint().lineNumber() : -1;
-      const bool selectionStartIsSelectionPoint = hasSelection && (selectionPointLineNumber != insertionPointLineNumber ? selectionPointLineNumber < insertionPointLineNumber : selectionPoint().columnNumber() < insertionPoint().columnNumber());
-      const int selectionStartLineNumber = std::min(selectionPointLineNumber, insertionPointLineNumber);
-      const int selectionEndLineNumber = std::max(selectionPointLineNumber, insertionPointLineNumber);
+      Editor::Buffer::Point* selectionStart = nullptr;
+      Editor::Buffer::Point* selectionEnd = nullptr;
+      if (hasSelection) Editor::Buffer::Point::sortPair(&insertionPoint(), &selectionPoint(), &selectionStart, &selectionEnd);
+      const int selectionStartLineNumber = hasSelection ? selectionStart->lineNumber() : -1;
+      const int selectionEndLineNumber = hasSelection ? selectionEnd->lineNumber() : -1;
       const int selectionUpdateStartLineNumber = std::min(selectionUpdateOneBoundLineNumber, selectionUpdateOtherBoundLineNumber);
       const int selectionUpdateEndLineNumber = std::max(selectionUpdateOneBoundLineNumber, selectionUpdateOtherBoundLineNumber);
       for (int lineNumber = std::max(selectionUpdateStartLineNumber, pageTopLineNumber);
@@ -173,14 +178,8 @@ public:
            ++lineNumber) {
         Line& line = page_[lineNumber - pageTopLineNumber];
         if (hasSelection && lineNumber >= selectionStartLineNumber && lineNumber <= selectionEndLineNumber) {
-          int start = 0;
-          int end = line.layout->lineAt(0).textLength();
-          if (lineNumber == selectionStartLineNumber) {
-            start = selectionStartIsSelectionPoint ? selectionPoint().columnNumber() : insertionPoint().columnNumber();
-          }
-          if (lineNumber == selectionEndLineNumber) {
-            end = selectionStartIsSelectionPoint ? insertionPoint().columnNumber() : selectionPoint().columnNumber();
-          }
+          const int start = lineNumber == selectionStartLineNumber ? selectionStart->columnNumber() : 0;
+          const int end = lineNumber == selectionEndLineNumber ? selectionEnd->columnNumber() : line.layout->lineAt(0).textLength();
           QTextLayout::FormatRange range;
           range.format.setForeground(Qt::gray);
           range.format.setBackground(Qt::darkBlue);
@@ -206,6 +205,22 @@ public:
     updateAfterVisibleChange(rect());
   }
 
+  void handleKeyContentChange(bool canInsertOrDeleteLines, std::function<bool()> change) {
+    if (!insertionPoint().isValid()) return;
+    if (selectionPoint().isValid()) {
+      selectionPoint().deleteTo(&insertionPoint());
+      selectionPoint().reset();
+      canInsertOrDeleteLines = true;
+    }
+    if (change()) {
+      if (canInsertOrDeleteLines) {
+        updateAfterLineInsertedOrDeleted();
+      } else {
+        updateAfterInsertionLineModified();
+      }
+    }
+  }
+
   void keyPressEvent(QKeyEvent* event) override {
     switch (event->key()) {
       // Moving the cursor.
@@ -229,21 +244,21 @@ public:
         return;
       // Content changes that may insert or delete lines.
       case Qt::Key_Return:
-        if (insertionPoint().insertLineBreakBefore()) updateAfterLineInsertedOrDeleted();
+        handleKeyContentChange(true, [this]() { return insertionPoint().insertLineBreakBefore(); });
         return;
       case Qt::Key_Backspace:
         // TODO: optimize case where no lines inserted or deleted
-        if (insertionPoint().deleteCharBefore()) updateAfterLineInsertedOrDeleted();
+        handleKeyContentChange(true, [this]() { return insertionPoint().deleteCharBefore(); });
         return;
       case Qt::Key_Delete:
         // TODO: optimize case where no lines inserted or deleted
-        if (insertionPoint().deleteCharAfter()) updateAfterLineInsertedOrDeleted();
+        handleKeyContentChange(true, [this]() { return insertionPoint().deleteCharAfter(); });
         return;
       // Content changes that may not insert or delete lines.
       default:
         QString text = event->text();
         if (!text.isEmpty()) {
-          if (insertionPoint().insertBefore(text)) updateAfterInsertionLineModified();
+          handleKeyContentChange(false, [this, &text]() { return insertionPoint().insertBefore(text); });
           return;
         }
     }
@@ -252,7 +267,7 @@ public:
 
   void handleMouseMoveWithButtonPressed(QMouseEvent* event) {
     handleCursorMove(mouseExtendingSelection_, [this, event]() {
-      int lineNumber = view_->view_->pageTop_.lineNumber() - 1;
+      int lineNumber = pageTop().lineNumber() - 1;
       QTextLayout* layoutForClick = nullptr;
       for (Line& line : page_) {
         ++lineNumber;
