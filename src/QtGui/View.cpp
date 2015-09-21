@@ -57,6 +57,8 @@ public:
       top = line.layout->boundingRect().bottom();
       if (top >= height()) break;
     }
+    const int pageTopLineNumber = pageTop().lineNumber();
+    updateSelection(pageTopLineNumber, pageTopLineNumber, pageTopLineNumber + page_.size());
   }
 
   void updateLayout(QTextLayout* layout, int top) {
@@ -65,7 +67,6 @@ public:
     layout->setTextOption(textOption);
     layout->setCacheEnabled(true);
     layout->beginLayout();
-    // FIXME: this also needs to update selections!
     QTextLine layoutLine = layout->createLine();
     layoutLine.setLineWidth(layout->text().size());
     layoutLine.setPosition(QPointF(0, top));
@@ -140,6 +141,37 @@ public:
     }
   }
 
+  void updateSelection(int pageTopLineNumber, int updateStartLineNumber, int updateEndLineNumber) {
+    const bool hasSelection = insertionPoint().isValid() && selectionPoint().isValid();
+    const int insertionPointLineNumber = hasSelection ? insertionPoint().lineNumber() : -1;
+    const int selectionPointLineNumber = hasSelection ? selectionPoint().lineNumber() : -1;
+    Editor::Buffer::Point* selectionStart = nullptr;
+    Editor::Buffer::Point* selectionEnd = nullptr;
+    if (hasSelection) Editor::Buffer::Point::sortPair(&insertionPoint(), &selectionPoint(), &selectionStart, &selectionEnd);
+    const int selectionStartLineNumber = hasSelection ? selectionStart->lineNumber() : -1;
+    const int selectionEndLineNumber = hasSelection ? selectionEnd->lineNumber() : -1;
+    for (int lineNumber = std::max(updateStartLineNumber, pageTopLineNumber);
+          lineNumber <= std::min<int>(updateEndLineNumber, pageTopLineNumber + page_.size() - 1);
+          ++lineNumber) {
+      Line& line = page_[lineNumber - pageTopLineNumber];
+      if (hasSelection && lineNumber >= selectionStartLineNumber && lineNumber <= selectionEndLineNumber) {
+        const int start = lineNumber == selectionStartLineNumber ? selectionStart->columnNumber() : 0;
+        const int end = lineNumber == selectionEndLineNumber ? selectionEnd->columnNumber() : line.layout->lineAt(0).textLength();
+        QTextLayout::FormatRange range;
+        range.format.setForeground(Qt::gray);
+        range.format.setBackground(Qt::darkBlue);
+        range.start = start;
+        range.length = end - start;
+        line.selections = {range};
+        line.selectionContinuesAfterEnd = lineNumber < selectionEndLineNumber;
+      } else {
+        line.selections.clear();
+        line.selectionContinuesAfterEnd = false;
+      }
+      update(layoutBounds(line.layout.get()));
+    }
+  }
+
   void handleCursorMove(bool extendSelection, std::function<bool()> move) {
     int selectionUpdateOneBoundLineNumber = -1;
     int selectionUpdateOtherBoundLineNumber = -1;
@@ -162,37 +194,9 @@ public:
       if (selectionUpdateOneBoundLineNumber >= 0 && selectionUpdateOtherBoundLineNumber < 0) selectionUpdateOtherBoundLineNumber = insertionPointLineNumber;
     }
     if (selectionUpdateOtherBoundLineNumber >= 0) {
-      const int pageTopLineNumber = pageTop().lineNumber();
-      const bool hasSelection = insertionPoint().isValid() && selectionPoint().isValid();
-      const int insertionPointLineNumber = hasSelection ? insertionPoint().lineNumber() : -1;
-      const int selectionPointLineNumber = hasSelection ? selectionPoint().lineNumber() : -1;
-      Editor::Buffer::Point* selectionStart = nullptr;
-      Editor::Buffer::Point* selectionEnd = nullptr;
-      if (hasSelection) Editor::Buffer::Point::sortPair(&insertionPoint(), &selectionPoint(), &selectionStart, &selectionEnd);
-      const int selectionStartLineNumber = hasSelection ? selectionStart->lineNumber() : -1;
-      const int selectionEndLineNumber = hasSelection ? selectionEnd->lineNumber() : -1;
       const int selectionUpdateStartLineNumber = std::min(selectionUpdateOneBoundLineNumber, selectionUpdateOtherBoundLineNumber);
       const int selectionUpdateEndLineNumber = std::max(selectionUpdateOneBoundLineNumber, selectionUpdateOtherBoundLineNumber);
-      for (int lineNumber = std::max(selectionUpdateStartLineNumber, pageTopLineNumber);
-           lineNumber <= std::min<int>(selectionUpdateEndLineNumber, pageTopLineNumber + page_.size() - 1);
-           ++lineNumber) {
-        Line& line = page_[lineNumber - pageTopLineNumber];
-        if (hasSelection && lineNumber >= selectionStartLineNumber && lineNumber <= selectionEndLineNumber) {
-          const int start = lineNumber == selectionStartLineNumber ? selectionStart->columnNumber() : 0;
-          const int end = lineNumber == selectionEndLineNumber ? selectionEnd->columnNumber() : line.layout->lineAt(0).textLength();
-          QTextLayout::FormatRange range;
-          range.format.setForeground(Qt::gray);
-          range.format.setBackground(Qt::darkBlue);
-          range.start = start;
-          range.length = end - start;
-          line.selections = {range};
-          line.selectionContinuesAfterEnd = lineNumber < selectionEndLineNumber;
-        } else {
-          line.selections.clear();
-          line.selectionContinuesAfterEnd = false;
-        }
-        update(layoutBounds(line.layout.get()));
-      }
+      updateSelection(pageTop().lineNumber(), selectionUpdateStartLineNumber, selectionUpdateEndLineNumber);
     }
   }
 
