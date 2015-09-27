@@ -175,12 +175,18 @@ bool Buffer::Point::insertLineBreakBefore() {
   return true;
 }
 
+bool Buffer::Point::deleteCharBefore() {
+  if (!isValid()) return false;
+  TempPoint other(*this);
+  other.moveLeft();
+  return deleteTo(&other);
+}
+
 bool Buffer::Point::deleteCharAfter() {
   if (!isValid()) return false;
-  TempPoint after(buffer_);
-  after.moveTo(*this);
-  after.moveRight();
-  return deleteTo(&after);
+  TempPoint other(*this);
+  other.moveRight();
+  return deleteTo(&other);
 }
 
 bool Buffer::Point::deleteTo(Point* other) {

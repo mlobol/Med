@@ -70,6 +70,7 @@ public:
 
   ~Point();
 
+  Buffer* buffer() const { return buffer_; }
   bool isValid() const { return bufferLine_; }
   const QString& lineContent() const { return line()->content; }
 
@@ -94,7 +95,7 @@ public:
   bool insertBefore(const QString& text);
   bool insertLineBreakBefore();
 
-  bool deleteCharBefore() { return moveLeft() && deleteCharAfter(); }
+  bool deleteCharBefore();
   bool deleteCharAfter();
   bool deleteTo(Point* point);
 
@@ -133,7 +134,7 @@ public:
 
 class Buffer::TempPoint : public Point {
 public:
-  TempPoint(Buffer* buffer) : Point(false, buffer) {}
+  TempPoint(Point& other) : Point(false, other.buffer()) { moveTo(other); }
 };
 
 }  // namespace Editor
