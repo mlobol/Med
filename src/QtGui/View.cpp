@@ -18,6 +18,7 @@ public:
     setSizePolicy(QSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored));
     setFocusPolicy(Qt::StrongFocus);
     setTextFont({});
+    setStyleSheet("background: white");
     cursorBlinkingTimer_ = new QTimer(this);
     QObject::connect(cursorBlinkingTimer_, &QTimer::timeout, this, [this] () {
       cursorOn_ = !cursorOn_;
@@ -103,8 +104,8 @@ public:
     cursorBounds_ = layoutForInsertionPoint->boundingRect().toAlignedRect();
     cursorBounds_.setLeft(layoutForInsertionPoint->lineAt(0).cursorToX(
       insertionPoint().columnNumber()) - 1);
-    // Needs to be one larger than the width passed to drawCursor to account for rounding.
-    cursorBounds_.setWidth(3);
+    // Needs to be two larger than the width passed to drawCursor to account for rounding.
+    cursorBounds_.setWidth(4);
   }
 
   void updateAfterVisibleChange(QRect bounds) {
