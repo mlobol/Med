@@ -16,13 +16,15 @@ class MainWindow : public QMainWindow {
 public:
   MainWindow();
   virtual ~MainWindow();
-  
-  void Open(const std::string& path);
-  
+
+  void OpenFile(const std::string& path);
+
 private:
+  void OpenBuffer(Editor::Buffer* buffer);
+
   Editor::Buffers buffers_;
   Editor::Views views_;
-  
+
   std::list<View*> viewWidgets;
   QTabWidget tabWidget;
 };

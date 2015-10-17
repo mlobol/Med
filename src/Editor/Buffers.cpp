@@ -2,12 +2,17 @@
 
 namespace Med {
 namespace Editor {
-  
+
 Buffers::Buffers() {}
 Buffers::~Buffers() {}
 
-Buffer* Buffers::Open(const std::string& filePath) {
-  buffers_.emplace_back(Buffer::Open(filePath));
+Buffer* Buffers::New() {
+  buffers_.push_back(Buffer::New());
+  return buffers_.back().get();
+}
+
+Buffer* Buffers::OpenFile(const std::string& filePath) {
+  buffers_.push_back(Buffer::Open(filePath));
   return buffers_.back().get();
 }
 

@@ -24,6 +24,7 @@ public:
   class SafePoint;
   class TempPoint;
 
+  static std::unique_ptr<Buffer> New();
   static std::unique_ptr<Buffer> Open(const std::string& filePath);
 
   ~Buffer();

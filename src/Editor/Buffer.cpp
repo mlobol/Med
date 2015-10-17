@@ -46,6 +46,10 @@ Buffer::Tree::Iterator Buffer::insertLine(int lineNumber) {
   return line;
 }
 
+std::unique_ptr<Buffer> Buffer::New() {
+  return std::unique_ptr<Buffer>(new Buffer());
+}
+
 std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   QFile file(QString::fromStdString(filePath));
   if (!file.open(QFile::ReadOnly)) {

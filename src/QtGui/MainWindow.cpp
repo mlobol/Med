@@ -11,7 +11,7 @@ namespace QtGui {
 
 MainWindow::MainWindow() : tabWidget(this) {
   setCentralWidget(&tabWidget);
-  
+
   const auto addNewAction = [this](const char* text, QKeySequence shortcut, QMenu* menu, std::function<void()> callOnTrigger) {
     QAction* action = new QAction(this);
     action->setText(text);
@@ -22,18 +22,30 @@ MainWindow::MainWindow() : tabWidget(this) {
     return action;
   };
   QMenu* fileMenu = menuBar()->addMenu("File");
-  addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
-  addNewAction("Open", QKeySequence::Open, fileMenu, [this]() {
-    Open(QFileDialog::getOpenFileName().toStdString());
+  addNewAction("New", QKeySequence::New, fileMenu, [this]() {
+    OpenBuffer(buffers_.New());
   });
+  addNewAction("Open...", QKeySequence::Open, fileMenu, [this]() {
+    OpenBuffer(buffers_.OpenFile(QFileDialog::getOpenFileName().toStdString()));
+  });
+  addNewAction("Close", QKeySequence::Close, fileMenu, [this]() {
+    delete tabWidget.currentWidget();
+  });
+  addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
 }
 
 MainWindow::~MainWindow() {}
 
-void MainWindow::Open(const std::string& path) {
-  Editor::View* view = views_.newView(buffers_.Open(path));
+void MainWindow::OpenBuffer(Editor::Buffer* buffer) {
+  Editor::View* view = views_.newView(buffer);
   viewWidgets.push_back(new View(view));
-  tabWidget.addTab(viewWidgets.back(), view->buffer()->name());
+  const QString& bufferName = view->buffer()->name();
+  const QString& tabName = bufferName.isEmpty() ? "<None>" : bufferName;
+  tabWidget.setCurrentIndex(tabWidget.addTab(viewWidgets.back(), tabName));
+}
+
+void MainWindow::OpenFile(const std::string& path) {
+  OpenBuffer(buffers_.OpenFile(path));
 }
 
 }  // namespace QtGui

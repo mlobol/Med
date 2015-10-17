@@ -7,10 +7,10 @@ int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   QtGui::MainWindow foo;
   foo.showMaximized();
-  foo.Open("Makefile");
+  foo.OpenFile("Makefile");
   return app.exec();
 }
-  
+
 }  // namespace Med
 
 int main(int argc, char* argv[]) {
