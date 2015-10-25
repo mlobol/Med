@@ -3,6 +3,7 @@
 #include <memory>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QStringBuilder>
 
 namespace Med {
 namespace Editor {
@@ -65,7 +66,8 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
 Buffer::Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
 Buffer::Point::~Point() { setLine({}); }
 
-void Buffer::Point::sortPair(Point* left, Point* right, Point** first, Point** second) {
+template<typename PointType>
+void Buffer::Point::sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
   const bool leftIsFirst = left->bufferLine_ != right->bufferLine_ ? left->lineNumber() < right->lineNumber() : left->columnNumber() < right->columnNumber();
   *first = leftIsFirst ? left : right;
   *second = leftIsFirst ? right : left;
@@ -83,10 +85,12 @@ void Buffer::Point::setLine(Tree::Node* newLine) {
     points.pop_back();
   }
   bufferLine_ = newLine;
-  if (safe_ && bufferLine_) {
-    std::vector<SafePoint*>& points = bufferLine_->value.points;
-    indexInLinePoints_ = points.size();
-    points.push_back(static_cast<SafePoint*>(this));
+  if (bufferLine_) {
+    if (safe_) {
+      std::vector<SafePoint*>& points = bufferLine_->value.points;
+      indexInLinePoints_ = points.size();
+      points.push_back(static_cast<SafePoint*>(this));
+    }
     // Make sure the column number is within limits.
     setColumnNumber(columnNumber_);
   }
@@ -147,30 +151,54 @@ bool Buffer::Point::moveRight() {
   return true;
 }
 
-bool Buffer::Point::insertBefore(const QString& text) {
+bool Buffer::Point::contentTo(const Point& other, QString* output) const {
+  if (!isValid() || !other.isValid()) return false;
+  const Point* from = nullptr;
+  const Point* to = nullptr;
+  sortPair(this, &other, &from, &to);
+  for (TempPoint line(*from); line.isValid(); line.moveDown()) {
+    const int start = line.sameLineAs(*from) ? from->columnNumber() : 0;
+    const bool isLastLine = line.sameLineAs(*to);
+    const int end = isLastLine ? to->columnNumber() : line.lineContent().size();
+    output->append(line.lineContent().midRef(start, end - start));
+    if (isLastLine) break;
+    output->append('\n');
+  }
+  return true;
+}
+
+bool Buffer::Point::insertBefore(const QStringRef& text) {
   if (!bufferLine_) return false;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber_ <= lineContent().size());
-  line()->content.insert(columnNumber, text);
+  // Qt 5.5 and earlier don't provide QString::insert(int, QStringRef). Can be changed after Qt 5.6.
+  line()->content.insert(columnNumber, text.constData(), text.size());
   for (Point* point : line()->points) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
   }
   return true;
 }
 
-bool Buffer::Point::insertLineBreakBefore() {
+bool Buffer::Point::insertBefore(const QStringRef& currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, const QStringRef& newLineText) {
   if (!bufferLine_) return false;
-  Tree::Node* newLine = buffer_->insertLine(lineNumber() + 1)->node;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber <= lineContent().size());
-  newLine->value.content = lineContent().right(lineContent().size() - columnNumber);
-  line()->content.truncate(columnNumber);
+  int newLineNumber = lineNumber();
+  for (LinesToInsertIterator textToInsert = beginLinesToInsert; textToInsert != endLinesToInsert; ++textToInsert) {
+    Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
+    newLine->value.content = textToInsert->toString();
+  }
+  Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
+  newLine->value.content = newLineText % lineContent().rightRef(lineContent().size() - columnNumber);
+  line()->content = lineContent().leftRef(columnNumber) % currentLineText;
+  // Saving reference as the loop below might move the point to a new line.
   std::vector<SafePoint*>& points = line()->points;
+  const int insertLength = newLineText.size();
   for (int point_index = 0; point_index < points.size();) {
     Point* point = points[point_index];
     if (point->columnNumber_ >= columnNumber) {
+      point->columnNumber_ += insertLength - columnNumber;
       // Removes this point from the points vector.
-      point->columnNumber_ -= columnNumber;
       point->setLine(newLine);
       continue;
     }
@@ -198,7 +226,7 @@ bool Buffer::Point::deleteTo(Point* other) {
   Point* from = nullptr;
   Point* to = nullptr;
   sortPair(this, other, &from, &to);
-  if (from->bufferLine_ == to->bufferLine_) {
+  if (from->sameLineAs(*to)) {
     from->line()->content.remove(from->columnNumber(), to->columnNumber() - from->columnNumber());
     for (SafePoint* point : from->bufferLine_->value.points) {
       if (point->columnNumber() > to->columnNumber()) {

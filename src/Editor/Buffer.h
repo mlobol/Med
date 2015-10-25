@@ -73,13 +73,13 @@ public:
 
   Buffer* buffer() const { return buffer_; }
   bool isValid() const { return bufferLine_; }
-  const QString& lineContent() const { return line()->content; }
 
   void reset() { setLine(nullptr); }
   void moveTo(const Point& point);
   bool setColumnNumber(int columnNumber);
   void setLineNumber(int lineNumber);
 
+  bool sameLineAs(const Point& point) const { return bufferLine_ == point.bufferLine_; }
   int columnNumber() const { return columnNumber_; }
   int lineNumber() const {
     // TODO: cache line number and only compute it if the buffer changed since last time.
@@ -93,14 +93,29 @@ public:
   bool moveLeft();
   bool moveRight();
 
-  bool insertBefore(const QString& text);
-  bool insertLineBreakBefore();
+  const QString& lineContent() const { return line()->content; }
+  bool contentTo(const Point& other, QString* output) const;
+
+  // Inserts the text in the current line; no line breaks inserted.
+  bool insertBefore(const QStringRef& text);
+  // Inserts currentLineText, then a line break, then whole lines with text from [beginLinesToInsert, endLinesToInsert) (with a line break after each), then newLineText.
+  using LinesToInsertIterator = std::vector<QStringRef>::const_iterator;
+  bool insertBefore(const QStringRef& currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, const QStringRef& newLineText);
+  // Inserts the given lines with line breaks between them. No line break is inserted before the first line or after the last one.
+  bool insertBefore(const std::vector<QStringRef>& lines) {
+    if (!bufferLine_) return false;
+    if (lines.empty()) return true;
+    if (lines.size() == 1) return insertBefore(lines.front());
+    return insertBefore(lines.front(), lines.begin() + 1, lines.end() - 1, lines.back());
+  }
+  bool insertLineBreakBefore() { return insertBefore({}, {}, {}, {}); }
 
   bool deleteCharBefore();
   bool deleteCharAfter();
   bool deleteTo(Point* point);
 
-  static void sortPair(Point* left, Point* right, Point** first, Point** second);
+  template<typename PointType>
+  static void sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second);
 
   LinesForwardsIterable linesForwards() { return LinesForwardsIterable(this); }
 
@@ -135,7 +150,7 @@ public:
 
 class Buffer::TempPoint : public Point {
 public:
-  TempPoint(Point& other) : Point(false, other.buffer()) { moveTo(other); }
+  TempPoint(const Point& other) : Point(false, other.buffer()) { moveTo(other); }
 };
 
 }  // namespace Editor

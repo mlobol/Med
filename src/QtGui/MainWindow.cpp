@@ -32,6 +32,15 @@ MainWindow::MainWindow() : tabWidget(this) {
     delete tabWidget.currentWidget();
   });
   addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
+  QMenu* editMenu = menuBar()->addMenu("Edit");
+  addNewAction("Copy", QKeySequence::Copy, editMenu, [this]() {
+    View* currentView = qobject_cast<View*>(tabWidget.currentWidget());
+    if (currentView) currentView->copyToClipboard();
+  });
+  addNewAction("Paste", QKeySequence::Paste, editMenu, [this]() {
+    View* currentView = qobject_cast<View*>(tabWidget.currentWidget());
+    if (currentView) currentView->pasteFromClipboard();
+  });
 }
 
 MainWindow::~MainWindow() {}

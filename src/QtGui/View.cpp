@@ -2,9 +2,11 @@
 
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
+#include <QtGui/QClipboard>
 #include <QtGui/QPainter>
 #include <QtGui/QTextLine>
 #include <QtWidgets/QAbstractScrollArea>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QVBoxLayout>
 
@@ -263,7 +265,7 @@ public:
       default:
         QString text = event->text();
         if (!text.isEmpty()) {
-          handleKeyContentChange(false, [this, &text]() { return insertionPoint().insertBefore(text); });
+          handleKeyContentChange(false, [this, &text]() { return insertionPoint().insertBefore(&text); });
           return;
         }
     }
@@ -320,6 +322,20 @@ public:
 
   int linesPerPage() {
     return height() / textFontMetrics_->lineSpacing();
+  }
+
+  void copyToClipboard() {
+    // TODO: use custom MIME type so that data is only converted to text on demand when pasting.
+    QString text;
+    if (!insertionPoint().contentTo(selectionPoint(), &text)) return;
+    QApplication::clipboard()->setText(text);
+  }
+
+  void pasteFromClipboard() {
+    // TODO: implement more efficient paste when pasting from the same process.
+    handleKeyContentChange(true, [this]() {
+      return insertionPoint().insertBefore(QApplication::clipboard()->text().splitRef('\n').toStdVector());
+    });
   }
 
   struct Line {
@@ -409,6 +425,9 @@ View::View(Editor::View* view) : view_(view) {
 }
 
 View::~View() {}
+
+void View::copyToClipboard() { lines_->copyToClipboard(); }
+void View::pasteFromClipboard() { lines_->pasteFromClipboard(); }
 
 }  // namespace QtGui
 }  // namespace Med
