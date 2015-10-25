@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 2.8.8)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+set(Qt5Widgets_DIR /home/mlobo/Qt/5.5/gcc_64/lib/cmake/Qt5Widgets)
 find_package(Qt5Widgets REQUIRED)
 
 add_definitions("-std=c++1y")
