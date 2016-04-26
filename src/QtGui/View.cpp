@@ -433,10 +433,10 @@ View::~View() {}
 void View::copyToClipboard() { lines_->copyToClipboard(); }
 void View::pasteFromClipboard() { lines_->pasteFromClipboard(); }
 void View::undo() {
-  lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.undo(); });
+  lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.undo(&lines_->insertionPoint()); });
 }
 void View::redo() {
-    lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(); });
+    lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(&lines_->insertionPoint()); });
 }
 
 }  // namespace QtGui
