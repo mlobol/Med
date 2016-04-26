@@ -1,5 +1,7 @@
 #include "Buffer.h"
 
+#include "Undo.h"
+
 #include <memory>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
@@ -167,26 +169,29 @@ bool Buffer::Point::contentTo(const Point& other, QString* output) const {
   return true;
 }
 
-bool Buffer::Point::insertBefore(const QStringRef& text) {
+bool Buffer::Point::insertBefore(QStringRef text, UndoOps* opsToUndo) {
   if (!bufferLine_) return false;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber_ <= lineContent().size());
   // Qt 5.5 and earlier don't provide QString::insert(int, QStringRef). Can be changed after Qt 5.6.
+  TempPoint start(*this);
   line()->content.insert(columnNumber, text.constData(), text.size());
   for (Point* point : line()->points) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
   }
+  if (opsToUndo) opsToUndo->recordInsertion(start, *this);
   return true;
 }
 
-bool Buffer::Point::insertBefore(const QStringRef& currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, const QStringRef& newLineText) {
+bool Buffer::Point::insertBefore(QStringRef currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, QStringRef newLineText, UndoOps* opsToUndo) {
   if (!bufferLine_) return false;
+  TempPoint start(*this);
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber <= lineContent().size());
   int newLineNumber = lineNumber();
   for (LinesToInsertIterator textToInsert = beginLinesToInsert; textToInsert != endLinesToInsert; ++textToInsert) {
     Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
-    newLine->value.content = textToInsert->toString();
+    newLine->value.content = std::move(*textToInsert);
   }
   Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
   newLine->value.content = newLineText % lineContent().rightRef(lineContent().size() - columnNumber);
@@ -204,49 +209,71 @@ bool Buffer::Point::insertBefore(const QStringRef& currentLineText, LinesToInser
     }
     ++point_index;
   }
+  if (opsToUndo) opsToUndo->recordInsertion(start, *this);
   return true;
 }
 
-bool Buffer::Point::deleteCharBefore() {
+bool Buffer::Point::insertBefore(const std::vector<QStringRef>& lines, UndoOps* opsToUndo) {
+  if (!bufferLine_) return false;
+  if (lines.empty()) return true;
+  if (lines.size() == 1) return insertBefore(lines.front(), opsToUndo);
+  std::vector<QString> fullLines;
+  fullLines.reserve(lines.size() - 2);
+  for (auto fullLine = lines.begin() + 1; fullLine != lines.end(); ++fullLine) {
+    fullLines.push_back(fullLine->toString());
+  }
+  return insertBefore(lines.front(), fullLines.begin(), fullLines.end(), lines.back(), opsToUndo);
+}
+
+bool Buffer::Point::deleteCharBefore(UndoOps* opsToUndo) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveLeft();
-  return deleteTo(&other);
+  return deleteTo(&other, opsToUndo);
 }
 
-bool Buffer::Point::deleteCharAfter() {
+bool Buffer::Point::deleteCharAfter(UndoOps* opsToUndo) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveRight();
-  return deleteTo(&other);
+  return deleteTo(&other, opsToUndo);
 }
 
-bool Buffer::Point::deleteTo(Point* other) {
+bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
   if (!isValid() || !other->isValid()) return false;
   Point* from = nullptr;
   Point* to = nullptr;
   sortPair(this, other, &from, &to);
   if (from->sameLineAs(*to)) {
-    from->line()->content.remove(from->columnNumber(), to->columnNumber() - from->columnNumber());
+    const int start = from->columnNumber();
+    const int end = to->columnNumber();
+    if (opsToUndo) opsToUndo->recordPartialLineDeletion(*from, *to, from->line()->content.midRef(start, end - start));
     for (SafePoint* point : from->bufferLine_->value.points) {
-      if (point->columnNumber() > to->columnNumber()) {
-        point->columnNumber_ -= to->columnNumber() - from->columnNumber();
-      } else if (point->columnNumber() > from->columnNumber()) {
-        point->columnNumber_ = from->columnNumber();
+      if (point->columnNumber() > end) {
+        point->columnNumber_ -= end - start;
+      } else if (point->columnNumber() > start) {
+        point->columnNumber_ = start;
       }
     }
+    from->line()->content.remove(start, end - start);
   } else {
     QString& fromContent = from->bufferLine_->value.content;
-    fromContent.truncate(from->columnNumber());
-    fromContent.append(to->bufferLine_->value.content.mid(to->columnNumber()));
-    for (SafePoint* point : from->bufferLine_->value.points) {
-      if (point->columnNumber() > from->columnNumber()) {
-        point->columnNumber_ = from->columnNumber();
-      }
-    }
+    QStringRef firstLineDeleted = opsToUndo ? fromContent.midRef(from->columnNumber()) : QStringRef();
+    std::vector<QString> linesDeleted;
     while (true) {
       Tree::Node* bufferLine = from->bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+      QString& content = bufferLine->value.content;
       const bool isLast = bufferLine == to->bufferLine_;
+      if (isLast) {
+        if (opsToUndo) opsToUndo->recordMultilineDeletion(*from, *to, firstLineDeleted, std::move(linesDeleted), content.leftRef(to->columnNumber()));
+        fromContent.truncate(from->columnNumber());
+        fromContent.append(content.mid(to->columnNumber()));
+        for (SafePoint* point : from->bufferLine_->value.points) {
+          if (point->columnNumber() > from->columnNumber()) {
+            point->columnNumber_ = from->columnNumber();
+          }
+        }
+      }
       while (!bufferLine->value.points.empty()) {
         SafePoint* point = bufferLine->value.points.back();
         if (isLast && point->columnNumber() > to->columnNumber()) {
@@ -257,8 +284,9 @@ bool Buffer::Point::deleteTo(Point* other) {
         point->setLine(from->bufferLine_);
       }
       bufferLine->detach();
-      delete bufferLine;
       from->bufferLine_->setDelta(1);
+      if (opsToUndo) linesDeleted.push_back(std::move(bufferLine->value.content));
+      delete bufferLine;
       if (isLast) break;
     }
   }

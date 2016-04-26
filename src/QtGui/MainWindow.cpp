@@ -21,6 +21,12 @@ MainWindow::MainWindow() : tabWidget(this) {
     if (menu != nullptr) menu->addAction(action);
     return action;
   };
+  const auto addNewActionWithView = [this, &addNewAction](const char* text, QKeySequence shortcut, QMenu* menu, std::function<void(View* currentView)> callOnTrigger) {
+    return addNewAction(text, shortcut, menu, [this, callOnTrigger]() {
+      View* currentView = qobject_cast<View*>(tabWidget.currentWidget());
+      if (currentView) callOnTrigger(currentView);
+    });
+  };
   QMenu* fileMenu = menuBar()->addMenu("File");
   addNewAction("New", QKeySequence::New, fileMenu, [this]() {
     OpenBuffer(buffers_.New());
@@ -33,13 +39,17 @@ MainWindow::MainWindow() : tabWidget(this) {
   });
   addNewAction("Quit", QKeySequence::Quit, fileMenu, [this]() { close(); });
   QMenu* editMenu = menuBar()->addMenu("Edit");
-  addNewAction("Copy", QKeySequence::Copy, editMenu, [this]() {
-    View* currentView = qobject_cast<View*>(tabWidget.currentWidget());
-    if (currentView) currentView->copyToClipboard();
+  addNewActionWithView("Undo", QKeySequence::Undo, editMenu, [this](View* currentView) {
+    currentView->undo();
   });
-  addNewAction("Paste", QKeySequence::Paste, editMenu, [this]() {
-    View* currentView = qobject_cast<View*>(tabWidget.currentWidget());
-    if (currentView) currentView->pasteFromClipboard();
+  addNewActionWithView("Redo", QKeySequence::Redo, editMenu, [this](View* currentView) {
+    currentView->redo();
+  });
+  addNewActionWithView("Copy", QKeySequence::Copy, editMenu, [this](View* currentView) {
+    currentView->copyToClipboard();
+  });
+  addNewActionWithView("Paste", QKeySequence::Paste, editMenu, [this](View* currentView) {
+    currentView->pasteFromClipboard();
   });
 }
 

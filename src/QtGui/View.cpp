@@ -31,6 +31,8 @@ public:
   Editor::Buffer::SafePoint& insertionPoint() { return view_->view_->insertionPoint_; }
   Editor::Buffer::SafePoint& selectionPoint() { return view_->view_->selectionPoint_; }
   Editor::Buffer::SafePoint& pageTop() { return view_->view_->pageTop_; }
+  Editor::Undo* undo() { return &view_->view_->undo_; }
+  Editor::UndoOps* opsToUndo() { return undo()->opsToUndo(); }
 
   bool event(QEvent* event) override {
     if (event->type() == QEvent::KeyPress) {
@@ -212,12 +214,14 @@ public:
     updateAfterVisibleChange(rect());
   }
 
-  void handleKeyContentChange(bool canInsertOrDeleteLines, std::function<bool()> change) {
+  void handleKeyContentChange(bool canInsertOrDeleteLines, bool deleteSelection, std::function<bool()> change) {
     if (!insertionPoint().isValid()) return;
     if (selectionPoint().isValid()) {
-      selectionPoint().deleteTo(&insertionPoint());
+      if (deleteSelection) {
+        selectionPoint().deleteTo(&insertionPoint(), opsToUndo());
+        canInsertOrDeleteLines = true;
+      }
       selectionPoint().reset();
-      canInsertOrDeleteLines = true;
     }
     if (change()) {
       if (canInsertOrDeleteLines) {
@@ -251,21 +255,21 @@ public:
         return;
       // Content changes that may insert or delete lines.
       case Qt::Key_Return:
-        handleKeyContentChange(true, [this]() { return insertionPoint().insertLineBreakBefore(); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().insertLineBreakBefore(opsToUndo()); });
         return;
       case Qt::Key_Backspace:
         // TODO: optimize case where no lines inserted or deleted
-        handleKeyContentChange(true, [this]() { return insertionPoint().deleteCharBefore(); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharBefore(opsToUndo()); });
         return;
       case Qt::Key_Delete:
         // TODO: optimize case where no lines inserted or deleted
-        handleKeyContentChange(true, [this]() { return insertionPoint().deleteCharAfter(); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharAfter(opsToUndo()); });
         return;
       // Content changes that may not insert or delete lines.
       default:
         QString text = event->text();
         if (!text.isEmpty()) {
-          handleKeyContentChange(false, [this, &text]() { return insertionPoint().insertBefore(&text); });
+          handleKeyContentChange(false, true, [this, &text]() { return insertionPoint().insertBefore(&text, opsToUndo()); });
           return;
         }
     }
@@ -333,8 +337,8 @@ public:
 
   void pasteFromClipboard() {
     // TODO: implement more efficient paste when pasting from the same process.
-    handleKeyContentChange(true, [this]() {
-      return insertionPoint().insertBefore(QApplication::clipboard()->text().splitRef('\n').toStdVector());
+    handleKeyContentChange(true, true, [this]() {
+      return insertionPoint().insertBefore(QApplication::clipboard()->text().splitRef('\n').toStdVector(), opsToUndo());
     });
   }
 
@@ -428,6 +432,12 @@ View::~View() {}
 
 void View::copyToClipboard() { lines_->copyToClipboard(); }
 void View::pasteFromClipboard() { lines_->pasteFromClipboard(); }
+void View::undo() {
+  lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.undo(); });
+}
+void View::redo() {
+    lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(); });
+}
 
 }  // namespace QtGui
 }  // namespace Med

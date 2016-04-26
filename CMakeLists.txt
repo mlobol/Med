@@ -9,7 +9,7 @@ find_package(Qt5Widgets REQUIRED)
 
 add_definitions("-std=c++1y")
 include_directories(src)
-set(Med_SRCS src/Util/IteratorHelper.cpp src/Util/DRBTree.cpp src/Editor/Buffer.cpp src/Editor/Buffers.cpp src/Editor/View.cpp src/Editor/Views.cpp src/QtGui/MainWindow.cpp src/QtGui/View.cpp)
+set(Med_SRCS src/Util/IteratorHelper.cpp src/Util/DRBTree.cpp src/Editor/Buffer.cpp src/Editor/Buffers.cpp src/Editor/Undo.cpp src/Editor/View.cpp src/Editor/Views.cpp src/QtGui/MainWindow.cpp src/QtGui/View.cpp)
 add_library(Med ${Med_SRCS})
 qt5_use_modules(Med Widgets)
 

@@ -2,6 +2,7 @@
 #define MED_EDITOR_VIEW_H
 
 #include "Buffer.h"
+#include "Undo.h"
 
 namespace Med {
 namespace Editor {
@@ -11,6 +12,7 @@ public:
   Buffer::SafePoint insertionPoint_;
   Buffer::SafePoint selectionPoint_;
   Buffer::SafePoint pageTop_;
+  Undo undo_;
 
   View(Buffer* buffer);
 
