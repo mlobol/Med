@@ -1,7 +1,5 @@
 #include "Buffer.h"
 
-#include "Undo.h"
-
 #include <memory>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
@@ -10,7 +8,7 @@
 namespace Med {
 namespace Editor {
 
-class Buffer::Point::LineIteratorImpl : public LineIterator::Impl {
+class Point::LineIteratorImpl : public LineIterator::Impl {
 public:
   LineIteratorImpl(const Point& from) : line_(from.bufferLine_) {}
 
@@ -21,7 +19,7 @@ public:
     return line_;
   }
 
-  Tree::Node* line_;
+  Buffer::Tree::Node* line_;
 };
 
 Buffer::Buffer() {}
@@ -65,17 +63,17 @@ std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
   return buffer;
 }
 
-Buffer::Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
-Buffer::Point::~Point() { setLine({}); }
+Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
+Point::~Point() { setLine({}); }
 
 template<typename PointType>
-void Buffer::Point::sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
+void Point::sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
   const bool leftIsFirst = left->bufferLine_ != right->bufferLine_ ? left->lineNumber() < right->lineNumber() : left->columnNumber() < right->columnNumber();
   *first = leftIsFirst ? left : right;
   *second = leftIsFirst ? right : left;
 }
 
-void Buffer::Point::setLine(Tree::Node* newLine) {
+void Point::setLine(Buffer::Tree::Node* newLine) {
   if (safe_ && bufferLine_) {
     std::vector<SafePoint*>& points = bufferLine_->value.points;
     if (indexInLinePoints_ < points.size() - 1) {
@@ -98,62 +96,62 @@ void Buffer::Point::setLine(Tree::Node* newLine) {
   }
 }
 
-bool Buffer::Point::setColumnNumber(int columnNumber) {
+bool Point::setColumnNumber(int columnNumber) {
   if (!bufferLine_) return false;
   columnNumber_ = qBound(0, columnNumber, lineContent().size());
   return true;
 }
 
-void Buffer::Point::setLineNumber(int lineNumber) {
+void Point::setLineNumber(int lineNumber) {
   setLine(buffer_->line(qBound(1, lineNumber, buffer_->lineCount() + 1))->node);
 }
 
-void Buffer::Point::moveTo(const Point& point) {
+void Point::moveTo(const Point& point) {
   setLine(point.bufferLine_);
   setColumnNumber(point.columnNumber_);
 }
 
-bool Buffer::Point::moveToLineStart() {
+bool Point::moveToLineStart() {
   columnNumber_ = 0;
   return true;
 }
 
-bool Buffer::Point::moveToLineEnd() {
+bool Point::moveToLineEnd() {
   if (!bufferLine_) return false;
   columnNumber_ = lineContent().size();
   return true;
 }
 
-bool Buffer::Point::moveUp() {
+bool Point::moveUp() {
   if (!bufferLine_) return false;
-  Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::LEFT);
+  Buffer::Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::LEFT);
   if (!newLine) return false;
   setLine(newLine);
   return true;
 }
 
-bool Buffer::Point::moveDown() {
+bool Point::moveDown() {
   if (!bufferLine_) return false;
-  Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+  Buffer::Tree::Node* newLine = bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
   if (!newLine) return false;
   setLine(newLine);
   return true;
 }
 
-bool Buffer::Point::moveLeft() {
+bool Point::moveLeft() {
   if (columnNumber_ == 0) return moveUp() && moveToLineEnd();
   --columnNumber_;
   return true;
 }
 
-bool Buffer::Point::moveRight() {
+bool Point::moveRight() {
   if (!bufferLine_) return false;
   if (columnNumber_ >= lineContent().size()) return moveDown() && moveToLineStart();
   ++columnNumber_;
   return true;
 }
 
-bool Buffer::Point::contentTo(const Point& other, QString* output) const {
+bool Point::contentTo(const Point& other, QString* output) const {
   if (!isValid() || !other.isValid()) return false;
   const Point* from = nullptr;
   const Point* to = nullptr;
@@ -169,7 +167,7 @@ bool Buffer::Point::contentTo(const Point& other, QString* output) const {
   return true;
 }
 
-bool Buffer::Point::insertBefore(QStringRef text, UndoOps* opsToUndo) {
+bool Point::insertBefore(QStringRef text, Undo::Recorder recorder) {
   if (!bufferLine_) return false;
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber_ <= lineContent().size());
@@ -179,21 +177,21 @@ bool Buffer::Point::insertBefore(QStringRef text, UndoOps* opsToUndo) {
   for (Point* point : line()->points) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
   }
-  if (opsToUndo) opsToUndo->recordInsertion(start, *this);
+  if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
   return true;
 }
 
-bool Buffer::Point::insertBefore(QStringRef currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, QStringRef newLineText, UndoOps* opsToUndo) {
+bool Point::insertBefore(QStringRef currentLineText, LinesToInsertIterator beginLinesToInsert, LinesToInsertIterator endLinesToInsert, QStringRef newLineText, Undo::Recorder recorder) {
   if (!bufferLine_) return false;
   TempPoint start(*this);
   const int columnNumber = columnNumber_;
   Q_ASSERT(columnNumber <= lineContent().size());
   int newLineNumber = lineNumber();
   for (LinesToInsertIterator textToInsert = beginLinesToInsert; textToInsert != endLinesToInsert; ++textToInsert) {
-    Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
+    Buffer::Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
     newLine->value.content = std::move(*textToInsert);
   }
-  Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
+  Buffer::Tree::Node* newLine = buffer_->insertLine(++newLineNumber)->node;
   newLine->value.content = newLineText % lineContent().rightRef(lineContent().size() - columnNumber);
   line()->content = lineContent().leftRef(columnNumber) % currentLineText;
   // Saving reference as the loop below might move the point to a new line.
@@ -209,37 +207,37 @@ bool Buffer::Point::insertBefore(QStringRef currentLineText, LinesToInsertIterat
     }
     ++point_index;
   }
-  if (opsToUndo) opsToUndo->recordInsertion(start, *this);
+  if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
   return true;
 }
 
-bool Buffer::Point::insertBefore(const std::vector<QStringRef>& lines, UndoOps* opsToUndo) {
+bool Point::insertBefore(const std::vector<QStringRef>& lines, Undo::Recorder recorder) {
   if (!bufferLine_) return false;
   if (lines.empty()) return true;
-  if (lines.size() == 1) return insertBefore(lines.front(), opsToUndo);
+  if (lines.size() == 1) return insertBefore(lines.front(), recorder);
   std::vector<QString> fullLines;
   fullLines.reserve(lines.size() - 2);
   for (auto fullLine = lines.begin() + 1; fullLine != lines.end(); ++fullLine) {
     fullLines.push_back(fullLine->toString());
   }
-  return insertBefore(lines.front(), fullLines.begin(), fullLines.end(), lines.back(), opsToUndo);
+  return insertBefore(lines.front(), fullLines.begin(), fullLines.end(), lines.back(), recorder);
 }
 
-bool Buffer::Point::deleteCharBefore(UndoOps* opsToUndo) {
+bool Point::deleteCharBefore(Undo::Recorder recorder) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveLeft();
-  return deleteTo(&other, opsToUndo);
+  return deleteTo(&other, recorder);
 }
 
-bool Buffer::Point::deleteCharAfter(UndoOps* opsToUndo) {
+bool Point::deleteCharAfter(Undo::Recorder recorder) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveRight();
-  return deleteTo(&other, opsToUndo);
+  return deleteTo(&other, recorder);
 }
 
-bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
+bool Point::deleteTo(Point* other, Undo::Recorder recorder) {
   if (!isValid() || !other->isValid()) return false;
   Point* from = nullptr;
   Point* to = nullptr;
@@ -247,7 +245,7 @@ bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
   if (from->sameLineAs(*to)) {
     const int start = from->columnNumber();
     const int end = to->columnNumber();
-    if (opsToUndo) opsToUndo->recordPartialLineDeletion(*from, *to, from->line()->content.midRef(start, end - start));
+    if (recorder.undo) recorder.undo->recordPartialLineDeletion(recorder.mode, *from, *to, from->line()->content.midRef(start, end - start));
     for (SafePoint* point : from->bufferLine_->value.points) {
       if (point->columnNumber() > end) {
         point->columnNumber_ -= end - start;
@@ -258,14 +256,14 @@ bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
     from->line()->content.remove(start, end - start);
   } else {
     QString& fromContent = from->bufferLine_->value.content;
-    QStringRef firstLineDeleted = opsToUndo ? fromContent.midRef(from->columnNumber()) : QStringRef();
+    QStringRef firstLineDeleted = recorder.undo ? fromContent.midRef(from->columnNumber()) : QStringRef();
     std::vector<QString> linesDeleted;
     while (true) {
-      Tree::Node* bufferLine = from->bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
+      Buffer::Tree::Node* bufferLine = from->bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
       QString& content = bufferLine->value.content;
       const bool isLast = bufferLine == to->bufferLine_;
       if (isLast) {
-        if (opsToUndo) opsToUndo->recordMultilineDeletion(*from, *to, firstLineDeleted, std::move(linesDeleted), content.leftRef(to->columnNumber()));
+        if (recorder.undo) recorder.undo->recordMultilineDeletion(recorder.mode, *from, *to, firstLineDeleted, std::move(linesDeleted), content.leftRef(to->columnNumber()));
         fromContent.truncate(from->columnNumber());
         fromContent.append(content.mid(to->columnNumber()));
         for (SafePoint* point : from->bufferLine_->value.points) {
@@ -285,7 +283,7 @@ bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
       }
       bufferLine->detach();
       from->bufferLine_->setDelta(1);
-      if (opsToUndo) linesDeleted.push_back(std::move(bufferLine->value.content));
+      if (recorder.undo) linesDeleted.push_back(std::move(bufferLine->value.content));
       delete bufferLine;
       if (isLast) break;
     }
@@ -293,7 +291,7 @@ bool Buffer::Point::deleteTo(Point* other, UndoOps* opsToUndo) {
   return true;
 }
 
-Buffer::Point::LineIterator Buffer::Point::LinesForwardsIterable::begin() {
+Point::LineIterator Point::LinesForwardsIterable::begin() {
   return {std::make_unique<LineIteratorImpl>(*from_)};
 }
 

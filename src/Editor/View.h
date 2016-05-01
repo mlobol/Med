@@ -9,9 +9,9 @@ namespace Editor {
 
 class View {
 public:
-  Buffer::SafePoint insertionPoint_;
-  Buffer::SafePoint selectionPoint_;
-  Buffer::SafePoint pageTop_;
+  SafePoint insertionPoint_;
+  SafePoint selectionPoint_;
+  SafePoint pageTop_;
   Undo undo_;
 
   View(Buffer* buffer);

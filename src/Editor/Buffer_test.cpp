@@ -26,7 +26,7 @@ TEST_F(BufferTest, IterateFromLineNumber) {
     fourth line)");
   EXPECT_EQ("test", buffer.name());
 
-  Buffer::SafePoint from(&buffer);
+  SafePoint from(&buffer);
   from.setLineNumber(2);
   ASSERT_TRUE(from.isValid());
   {

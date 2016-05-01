@@ -28,11 +28,11 @@ public:
     });
   }
 
-  Editor::Buffer::SafePoint& insertionPoint() { return view_->view_->insertionPoint_; }
-  Editor::Buffer::SafePoint& selectionPoint() { return view_->view_->selectionPoint_; }
-  Editor::Buffer::SafePoint& pageTop() { return view_->view_->pageTop_; }
+  Editor::SafePoint& insertionPoint() { return view_->view_->insertionPoint_; }
+  Editor::SafePoint& selectionPoint() { return view_->view_->selectionPoint_; }
+  Editor::SafePoint& pageTop() { return view_->view_->pageTop_; }
   Editor::Undo* undo() { return &view_->view_->undo_; }
-  Editor::UndoOps* opsToUndo() { return undo()->opsToUndo(); }
+  Editor::Undo::Recorder recorder() { return undo()->recorder(); }
 
   bool event(QEvent* event) override {
     if (event->type() == QEvent::KeyPress) {
@@ -150,9 +150,9 @@ public:
     const bool hasSelection = insertionPoint().isValid() && selectionPoint().isValid();
     const int insertionPointLineNumber = hasSelection ? insertionPoint().lineNumber() : -1;
     const int selectionPointLineNumber = hasSelection ? selectionPoint().lineNumber() : -1;
-    Editor::Buffer::Point* selectionStart = nullptr;
-    Editor::Buffer::Point* selectionEnd = nullptr;
-    if (hasSelection) Editor::Buffer::Point::sortPair(&insertionPoint(), &selectionPoint(), &selectionStart, &selectionEnd);
+    Editor::Point* selectionStart = nullptr;
+    Editor::Point* selectionEnd = nullptr;
+    if (hasSelection) Editor::Point::sortPair(&insertionPoint(), &selectionPoint(), &selectionStart, &selectionEnd);
     const int selectionStartLineNumber = hasSelection ? selectionStart->lineNumber() : -1;
     const int selectionEndLineNumber = hasSelection ? selectionEnd->lineNumber() : -1;
     for (int lineNumber = std::max(updateStartLineNumber, pageTopLineNumber);
@@ -218,7 +218,7 @@ public:
     if (!insertionPoint().isValid()) return;
     if (selectionPoint().isValid()) {
       if (deleteSelection) {
-        selectionPoint().deleteTo(&insertionPoint(), opsToUndo());
+        selectionPoint().deleteTo(&insertionPoint(), recorder());
         canInsertOrDeleteLines = true;
       }
       selectionPoint().reset();
@@ -255,21 +255,21 @@ public:
         return;
       // Content changes that may insert or delete lines.
       case Qt::Key_Return:
-        handleKeyContentChange(true, true, [this]() { return insertionPoint().insertLineBreakBefore(opsToUndo()); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().insertLineBreakBefore(recorder()); });
         return;
       case Qt::Key_Backspace:
         // TODO: optimize case where no lines inserted or deleted
-        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharBefore(opsToUndo()); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharBefore(recorder()); });
         return;
       case Qt::Key_Delete:
         // TODO: optimize case where no lines inserted or deleted
-        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharAfter(opsToUndo()); });
+        handleKeyContentChange(true, true, [this]() { return insertionPoint().deleteCharAfter(recorder()); });
         return;
       // Content changes that may not insert or delete lines.
       default:
         QString text = event->text();
         if (!text.isEmpty()) {
-          handleKeyContentChange(false, true, [this, &text]() { return insertionPoint().insertBefore(&text, opsToUndo()); });
+          handleKeyContentChange(false, true, [this, &text]() { return insertionPoint().insertBefore(&text, recorder()); });
           return;
         }
     }
@@ -338,7 +338,7 @@ public:
   void pasteFromClipboard() {
     // TODO: implement more efficient paste when pasting from the same process.
     handleKeyContentChange(true, true, [this]() {
-      return insertionPoint().insertBefore(QApplication::clipboard()->text().splitRef('\n').toStdVector(), opsToUndo());
+      return insertionPoint().insertBefore(QApplication::clipboard()->text().splitRef('\n').toStdVector(), recorder());
     });
   }
 
