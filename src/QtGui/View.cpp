@@ -438,6 +438,9 @@ void View::undo() {
 void View::redo() {
     lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(&lines_->insertionPoint()); });
 }
+bool View::save() {
+  return view_->buffer()->save();
+}
 
 }  // namespace QtGui
 }  // namespace Med

@@ -25,7 +25,7 @@ public:
 Buffer::Buffer() {}
 Buffer::~Buffer() {}
 
-void Buffer::InitFromStream(QTextStream* stream, const QString& name) {
+void Buffer::initFromStream(QTextStream* stream, const QString& name) {
   while (true) {
     QString line = stream->readLine();
     if (line.isNull()) break;
@@ -47,20 +47,36 @@ Buffer::Tree::Iterator Buffer::insertLine(int lineNumber) {
   return line;
 }
 
-std::unique_ptr<Buffer> Buffer::New() {
+std::unique_ptr<Buffer> Buffer::create() {
   return std::unique_ptr<Buffer>(new Buffer());
 }
 
-std::unique_ptr<Buffer> Buffer::Open(const std::string& filePath) {
+std::unique_ptr<Buffer> Buffer::open(const std::string& filePath) {
   QFile file(QString::fromStdString(filePath));
   if (!file.open(QFile::ReadOnly)) {
     throw IOException("Failed to open file " + filePath + ".");
   }
   std::unique_ptr<Buffer> buffer(new Buffer());
+  buffer->filePath_ = filePath;
   QFileInfo fileInfo(file);
   QTextStream stream(&file);
-  buffer->InitFromStream(&stream, fileInfo.baseName());
+  buffer->initFromStream(&stream, fileInfo.fileName());
   return buffer;
+}
+
+bool Buffer::save() {
+  if (filePath_.empty()) return false;
+  QFile file(QString::fromStdString(filePath_));
+  if (!file.open(QFile::Truncate | QFile::WriteOnly | QFile::Text)) {
+    throw IOException("Failed to open file " + filePath_ + ".");
+  }
+  QTextStream stream(&file);
+  TempPoint from(this, 0);
+  for (const QString* lineContent : from.linesForwards()) {
+    stream << *lineContent << '\n';
+  }
+  modified_ = false;
+  return true;
 }
 
 Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
@@ -94,6 +110,7 @@ void Point::setLine(Buffer::Tree::Node* newLine) {
     // Make sure the column number is within limits.
     setColumnNumber(columnNumber_);
   }
+  buffer_->modified_ = true;
 }
 
 bool Point::setColumnNumber(int columnNumber) {
@@ -178,6 +195,7 @@ bool Point::insertBefore(QStringRef text, Undo::Recorder recorder) {
     if (point->columnNumber_ >= columnNumber) point->columnNumber_ += text.size();
   }
   if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
+  buffer_->modified_ = true;
   return true;
 }
 
@@ -208,6 +226,7 @@ bool Point::insertBefore(QStringRef currentLineText, LinesToInsertIterator begin
     ++point_index;
   }
   if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
+  buffer_->modified_ = true;
   return true;
 }
 
@@ -288,6 +307,7 @@ bool Point::deleteTo(Point* other, Undo::Recorder recorder) {
       if (isLast) break;
     }
   }
+  buffer_->modified_ = true;
   return true;
 }
 

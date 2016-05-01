@@ -29,10 +29,13 @@ MainWindow::MainWindow() : tabWidget(this) {
   };
   QMenu* fileMenu = menuBar()->addMenu("File");
   addNewAction("New", QKeySequence::New, fileMenu, [this]() {
-    OpenBuffer(buffers_.New());
+    OpenBuffer(buffers_.create());
   });
   addNewAction("Open...", QKeySequence::Open, fileMenu, [this]() {
-    OpenBuffer(buffers_.OpenFile(QFileDialog::getOpenFileName().toStdString()));
+    OpenFile(QFileDialog::getOpenFileName().toStdString());
+  });
+  addNewActionWithView("Save", QKeySequence::Save, fileMenu, [this](View* currentView) {
+    currentView->save();
   });
   addNewAction("Close", QKeySequence::Close, fileMenu, [this]() {
     delete tabWidget.currentWidget();
@@ -64,7 +67,7 @@ void MainWindow::OpenBuffer(Editor::Buffer* buffer) {
 }
 
 void MainWindow::OpenFile(const std::string& path) {
-  OpenBuffer(buffers_.OpenFile(path));
+  OpenBuffer(buffers_.openFile(path));
 }
 
 }  // namespace QtGui

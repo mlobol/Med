@@ -6,13 +6,13 @@ namespace Editor {
 Buffers::Buffers() {}
 Buffers::~Buffers() {}
 
-Buffer* Buffers::New() {
-  buffers_.push_back(Buffer::New());
+Buffer* Buffers::create() {
+  buffers_.push_back(Buffer::create());
   return buffers_.back().get();
 }
 
-Buffer* Buffers::OpenFile(const std::string& filePath) {
-  buffers_.push_back(Buffer::Open(filePath));
+Buffer* Buffers::openFile(const std::string& filePath) {
+  buffers_.push_back(Buffer::open(filePath));
   return buffers_.back().get();
 }
 

@@ -12,7 +12,7 @@ class BufferTest : public ::testing::Test {
 protected:
   void InitBuffer(const char* string) {
     QTextStream stream(string);
-    buffer.InitFromStream(&stream, "test");
+    buffer.initFromStream(&stream, "test");
   }
 
   Buffer buffer;

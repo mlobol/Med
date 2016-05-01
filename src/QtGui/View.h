@@ -19,6 +19,7 @@ public:
   void pasteFromClipboard();
   void undo();
   void redo();
+  bool save();
 
 private:
   class ScrollArea;

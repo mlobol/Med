@@ -15,8 +15,8 @@ public:
   Buffers();
   virtual ~Buffers();
 
-  Buffer* New();
-  Buffer* OpenFile(const std::string& filePath);
+  Buffer* create();
+  Buffer* openFile(const std::string& filePath);
 
 private:
   std::list<std::unique_ptr<Buffer>> buffers_;

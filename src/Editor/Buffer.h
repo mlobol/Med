@@ -24,12 +24,15 @@ class SafePoint;
 
 class Buffer {
 public:
-  static std::unique_ptr<Buffer> New();
-  static std::unique_ptr<Buffer> Open(const std::string& filePath);
+  static std::unique_ptr<Buffer> create();
+  static std::unique_ptr<Buffer> open(const std::string& filePath);
 
   ~Buffer();
 
   const QString& name() { return name_; }
+  const std::string& filePath() { return filePath_; }
+  bool save();
+  bool modified() { return modified_; }
 
   int lineCount() const { return tree_.totalDelta(); }
 
@@ -45,13 +48,15 @@ private:
 
   Buffer();
 
-  void InitFromStream(QTextStream* stream, const QString& name);
+  void initFromStream(QTextStream* stream, const QString& name);
 
   Tree::Iterator line(int lineNumber);
   Tree::Iterator insertLine(int lineNumber);
 
   Tree tree_;
   QString name_;
+  std::string filePath_;
+  bool modified_ = false;
 };
 
 class Point {
@@ -151,6 +156,9 @@ public:
 class TempPoint : public Point {
 public:
   TempPoint(const Point& other) : Point(false, other.buffer()) { moveTo(other); }
+  TempPoint(Buffer* buffer, int line) : Point(false, buffer) {
+    setLineNumber(line);
+  }
 };
 
 }  // namespace Editor
