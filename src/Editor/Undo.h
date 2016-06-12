@@ -39,6 +39,9 @@ public:
   // Called after all lines but the first have been extracted from the buffer, but before the first line is actually modified (so that the refs are still valid).
   void recordMultilineDeletion(RecordMode mode, const Point& start, const Point& end, QStringRef firstLineDeleted, std::vector<QString> linesDeleted, QStringRef lastLineDeleted);
 
+  bool modified() const;
+  void setUnmodified();
+
 private:
   // Reverts the last recorded op.
   bool revertLast(RecordMode mode, Point* insertionPoint);
@@ -57,6 +60,10 @@ private:
   Buffer* const buffer_;
   std::vector<std::unique_ptr<Op>> opsToUndo_;
   std::vector<std::unique_ptr<Op>> opsToRedo_;
+
+  bool unmodified_ = false;
+  // If non-null, reverting this op will put the buffer in unmodified state.
+  Op* opMakesUnmodified_ = nullptr;
 };
 
 }  // namespace Editor

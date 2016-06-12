@@ -114,6 +114,7 @@ public:
 
   void updateAfterVisibleChange(QRect bounds) {
     update(bounds);
+    view_->updateLabel();
     if (!hasFocus()) return;
     // When something changes in the view we start a new blink of the cursor so that it's obvious where it is.
     cursorOn_ = true;
@@ -418,7 +419,7 @@ public:
   View* view_;
 };
 
-View::View(Editor::View* view) : view_(view) {
+View::View(Editor::View* view, QTabWidget* tabWidget) : view_(view), tabWidget_(tabWidget) {
   scrollArea_ = new ScrollArea(this, this);
   lines_ = new Lines(scrollArea_, this);
   scrollArea_->setViewport(lines_);
@@ -432,14 +433,29 @@ View::~View() {}
 
 void View::copyToClipboard() { lines_->copyToClipboard(); }
 void View::pasteFromClipboard() { lines_->pasteFromClipboard(); }
+
 void View::undo() {
   lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.undo(&lines_->insertionPoint()); });
 }
+
 void View::redo() {
-    lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(&lines_->insertionPoint()); });
+  lines_->handleKeyContentChange(true, false, [this]() { return view_->undo_.redo(&lines_->insertionPoint()); });
 }
+
 bool View::save() {
-  return view_->buffer()->save();
+  const bool ok = view_->buffer()->save();
+  if (ok) {
+    view_->undo_.setUnmodified();
+    updateLabel();
+  }
+  return ok;
+}
+
+void View::updateLabel() {
+  const QString& bufferName = view_->buffer()->name();
+  QString tabLabel = bufferName.isEmpty() ? "<None>" : bufferName;
+  if (view_->undo_.modified()) tabLabel += "*";
+  tabWidget_->setTabText(tabWidget_->indexOf(this), tabLabel);
 }
 
 }  // namespace QtGui

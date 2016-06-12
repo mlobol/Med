@@ -60,10 +60,9 @@ MainWindow::~MainWindow() {}
 
 void MainWindow::OpenBuffer(Editor::Buffer* buffer) {
   Editor::View* view = views_.newView(buffer);
-  viewWidgets.push_back(new View(view));
-  const QString& bufferName = view->buffer()->name();
-  const QString& tabName = bufferName.isEmpty() ? "<None>" : bufferName;
-  tabWidget.setCurrentIndex(tabWidget.addTab(viewWidgets.back(), tabName));
+  viewWidgets.push_back(new View(view, &tabWidget));
+  tabWidget.setCurrentIndex(tabWidget.addTab(viewWidgets.back(), ""));
+  viewWidgets.back()->updateLabel();
 }
 
 void MainWindow::OpenFile(const std::string& path) {

@@ -16,8 +16,18 @@ public:
   const OpType type_;
   SafePoint start_;
   SafePoint end_;
+  // Newlines are implied between elements but not before the first element or after the last one.
   std::vector<QString> lines_;
 };
+
+Undo::Undo(Buffer* buffer) : buffer_(buffer) {}
+Undo::~Undo() {}
+
+bool Undo::modified() const { return !unmodified_; }
+void Undo::setUnmodified() {
+  unmodified_ = true;
+  opMakesUnmodified_ = nullptr;
+}
 
 Undo::Op* Undo::currentOp(RecordMode mode) {
   auto& ops = mode == RecordMode::UNDO ? opsToRedo_ : opsToUndo_;
@@ -28,6 +38,10 @@ Undo::Op& Undo::newOp(RecordMode mode, OpType opType) {
   if (mode == RecordMode::NORMAL) opsToRedo_.clear();
   auto& ops = mode == RecordMode::UNDO ? opsToRedo_ : opsToUndo_;
   ops.push_back(std::make_unique<Op>(opType, buffer_));
+  if (unmodified_) {
+    unmodified_ = false;
+    opMakesUnmodified_ = ops.back().get();
+  }
   return *ops.back();
 }
 
@@ -110,21 +124,24 @@ bool Undo::revertLast(RecordMode mode, Point* insertionPoint) {
   switch (op->type_) {
     case OpType::INSERTION: {
       const bool ok = op->start_.deleteTo(&op->end_, recorder);
-      if (ok && insertionPoint) insertionPoint->moveTo(op->start_);
-      return ok;
+      if (!ok) return false;
+      break;
     }
     case OpType::DELETION: {
       const bool ok = op->lines_.size() >= 2
       ? op->start_.insertBefore(&op->lines_.front(), op->lines_.begin() + 1, op->lines_.end() - 1, &op->lines_.back(), recorder)
       : op->start_.insertBefore(&op->lines_.front(), recorder);
-      if (ok && insertionPoint) insertionPoint->moveTo(op->start_);
-      return ok;
+      if (!ok) return false;
+      break;
     }
   }
+  if (insertionPoint) insertionPoint->moveTo(op->start_);
+  if (opMakesUnmodified_ == op.get()) {
+    unmodified_ = true;
+    opMakesUnmodified_ = nullptr;
+  }
+  return true;
 }
-
-Undo::Undo(Buffer* buffer) : buffer_(buffer) {}
-Undo::~Undo() {}
 
 }  // namespace Editor
 }  // namespace Med
