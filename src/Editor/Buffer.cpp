@@ -190,6 +190,7 @@ bool Point::insertBefore(QStringRef text, Undo::Recorder recorder) {
   for (Point* point : line()->points) {
     if (point->columnNumber() >= insertionColumnNumber) point->setColumnNumber(point->columnNumber() + text.size());
   }
+  if (!safe()) setColumnNumber(insertionColumnNumber + text.size());
   if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
   buffer_->modified_ = true;
   return true;
@@ -220,6 +221,10 @@ bool Point::insertBefore(QStringRef currentLineText, LinesToInsertIterator begin
       continue;
     }
     ++pointIndex;
+  }
+  if (!safe()) {
+    setColumnNumber(insertionLength);
+    setLine(newLine);
   }
   if (recorder.undo) recorder.undo->recordInsertion(recorder.mode, start, *this);
   buffer_->modified_ = true;
