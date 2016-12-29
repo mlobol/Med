@@ -9,8 +9,10 @@
 namespace Med {
 namespace Editor {
 
-class Point;
 class Buffer;
+class Point;
+class SafePoint;
+class TempPoint;
 
 class Undo {
 public:
@@ -34,10 +36,8 @@ public:
 
   // Called after insertion.
   void recordInsertion(RecordMode mode, const Point& start, const Point& end);
-  // Called before points are moved and the line content is modified (so that the ref is still valid).
-  void recordPartialLineDeletion(RecordMode mode, const Point& start, const Point& end, QStringRef content);
-  // Called after all lines but the first have been extracted from the buffer, but before the first line is actually modified (so that the refs are still valid).
-  void recordMultilineDeletion(RecordMode mode, const Point& start, const Point& end, QStringRef firstLineDeleted, std::vector<QString> linesDeleted, QStringRef lastLineDeleted);
+
+  TempPoint deletionHandling(RecordMode mode, const Point& start, const Point& end);
 
   bool modified() const;
   void setUnmodified();
@@ -50,9 +50,6 @@ private:
 
   class Op;
   enum class OpType { INSERTION, DELETION };
-
-  enum class DeletionHandling { PREPEND, APPEND, NEW };
-  std::pair<DeletionHandling, Op&> deletionHandling(RecordMode mode, const Point& start, const Point& end);
 
   Op* currentOp(RecordMode mode);
   Op& newOp(RecordMode mode, OpType opType);

@@ -219,7 +219,7 @@ public:
     if (!insertionPoint().isValid()) return;
     if (selectionPoint().isValid()) {
       if (deleteSelection) {
-        selectionPoint().deleteTo(&insertionPoint(), recorder());
+        selectionPoint().deleteTo(insertionPoint(), recorder());
         canInsertOrDeleteLines = true;
       }
       selectionPoint().reset();

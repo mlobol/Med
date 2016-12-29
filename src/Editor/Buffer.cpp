@@ -79,9 +79,9 @@ bool Buffer::save() {
   return true;
 }
 
-Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
-Point::~Point() { setLine({}); }
-
+Point::Point(Type type, Buffer* buffer) : type_(type), buffer_(buffer) {}
+Point::~Point() {
+  setLine({}); // Removes any references to the point from the buffer, which would become dangling after destruction.
 }
 
 void Point::setLine(Buffer::Tree::Node* newLine) {
@@ -105,6 +105,11 @@ void Point::setLine(Buffer::Tree::Node* newLine) {
     // Make sure the column number is within limits.
     setColumnNumber(columnNumber());
   }
+}
+
+void Point::setBufferAndLine(Buffer* buffer, Buffer::Tree::Node* newLine) {
+  buffer_ = buffer;
+  setLine(newLine);
 }
 
 bool Point::setColumnNumber(int columnNumber) {
@@ -163,7 +168,7 @@ bool Point::contentTo(const Point& other, QString* output) const {
   const Point* from = nullptr;
   const Point* to = nullptr;
   sortPair(this, &other, &from, &to);
-  for (TempPoint line(*from); line.isValid(); line.moveDown()) {
+  for (TempPoint line(*from); line.isValid(); line.moveToStartOfNextLineOrMakeInvalid()) {
     const int start = line.sameLineAs(*from) ? from->columnNumber() : 0;
     const bool isLastLine = line.sameLineAs(*to);
     const int end = isLastLine ? to->columnNumber() : line.lineContent().size();
@@ -241,69 +246,139 @@ bool Point::deleteCharBefore(Undo::Recorder recorder) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveLeft();
-  return deleteTo(&other, recorder);
+  return deleteTo(other, recorder);
 }
 
 bool Point::deleteCharAfter(Undo::Recorder recorder) {
   if (!isValid()) return false;
   TempPoint other(*this);
   other.moveRight();
-  return deleteTo(&other, recorder);
+  return deleteTo(other, recorder);
 }
 
-bool Point::deleteTo(Point* other, Undo::Recorder recorder) {
-  if (!isValid() || !other->isValid()) return false;
-  Point* from = nullptr;
-  Point* to = nullptr;
-  sortPair(this, other, &from, &to);
-  if (from->sameLineAs(*to)) {
-    const int start = from->columnNumber();
-    const int end = to->columnNumber();
-    if (recorder.undo) recorder.undo->recordPartialLineDeletion(recorder.mode, *from, *to, from->line()->content.midRef(start, end - start));
-    for (SafePoint* point : from->bufferLine_->value.points) {
-      if (point->columnNumber() > end) {
-        point->columnNumber_ -= end - start;
-      } else if (point->columnNumber() > start) {
-        point->columnNumber_ = start;
-      }
-    }
-    from->line()->content.remove(start, end - start);
+bool Point::deleteTo(const Point& other, Undo::Recorder recorder) {
+  if (!isValid() || !other.isValid()) return false;
+  if (recorder.undo) {
+    const Point* from = nullptr;
+    const Point* to = nullptr;
+    sortPair(this, &other, &from, &to);
+    moveContentBefore(other, recorder.undo->deletionHandling(recorder.mode, *from, *to));
   } else {
-    QString& fromContent = from->bufferLine_->value.content;
-    QStringRef firstLineDeleted = recorder.undo ? fromContent.midRef(from->columnNumber()) : QStringRef();
-    std::vector<QString> linesDeleted;
-    while (true) {
-      Buffer::Tree::Node* bufferLine = from->bufferLine_->adjacent(Util::DRBTreeDefs::Side::RIGHT);
-      QString& content = bufferLine->value.content;
-      const bool isLast = bufferLine == to->bufferLine_;
-      if (isLast) {
-        if (recorder.undo) recorder.undo->recordMultilineDeletion(recorder.mode, *from, *to, firstLineDeleted, std::move(linesDeleted), content.leftRef(to->columnNumber()));
-        fromContent.truncate(from->columnNumber());
-        fromContent.append(content.mid(to->columnNumber()));
-        for (SafePoint* point : from->bufferLine_->value.points) {
-          if (point->columnNumber() > from->columnNumber()) {
-            point->columnNumber_ = from->columnNumber();
-          }
-        }
-      }
-      while (!bufferLine->value.points.empty()) {
-        SafePoint* point = bufferLine->value.points.back();
-        if (isLast && point->columnNumber() > to->columnNumber()) {
-          point->columnNumber_ += from->columnNumber() - to->columnNumber();
-        } else {
-          point->columnNumber_ = from->columnNumber();
-        }
-        point->setLine(from->bufferLine_);
-      }
-      bufferLine->detach();
-      from->bufferLine_->setDelta(1);
-      if (recorder.undo) linesDeleted.push_back(std::move(bufferLine->value.content));
-      delete bufferLine;
-      if (isLast) break;
-    }
+    moveContentBefore(other, TempPoint());
   }
   buffer_->modified_ = true;
   return true;
+}
+
+void Point::moveToStartOfNextLineOrMakeInvalid() {
+  if (moveDown()) {
+    moveToLineStart();
+  } else {
+    setLine({});
+  }
+}
+
+Buffer::Tree::Node* Point::detachLineAndMoveToStartOfNextLineOrMakeInvalid() {
+  Buffer::Tree::Node* bufferLine = bufferLine_;
+  Buffer::Tree::Node* prevLine = bufferLine->adjacent(Util::DRBTreeDefs::Side::LEFT);
+  moveToStartOfNextLineOrMakeInvalid();
+  bufferLine->detach();
+  if (prevLine) prevLine->setDelta(1);
+  return bufferLine;
+}
+
+void Point::moveContentBefore(const Point& other, const Point& target) {
+  const Point* from = nullptr;
+  const Point* to = nullptr;
+  sortPair(this, &other, &from, &to);
+  TempPoint movingFrom(*from);
+  TempPoint movingTarget(target);
+  while (true) {
+    // We iterate over the lines in order so that we can easily move the content to the destination.
+    const bool isFirst = movingFrom.bufferLine_ == from->bufferLine_;
+    const bool isLast = movingFrom.bufferLine_ == to->bufferLine_;
+    if (isLast && to->columnNumber() == 0) {
+      // Nothing to delete from last line.
+      break;
+    }
+    if (isFirst || isLast) {
+      // The first line stays in the source buffer, so can't move it completely. The last line is merged into the first line. In either case we need to adjust the line content and move the points.
+      // We handle the last line here as it can also be the first, in case we're deleting from only one line.
+      // To update the points we need the movingTarget.columnNumber() before the insertion.
+      const int movingTargetColumnNumber = movingTarget.columnNumber();
+      if (movingTarget.isValid()) {
+        QStringRef movedContent =
+            isLast
+                ? movingFrom.lineContent().midRef(movingFrom.columnNumber(), to->columnNumber() - movingFrom.columnNumber())
+                : movingFrom.lineContent().midRef(movingFrom.columnNumber());
+        movingTarget.insertBefore(movedContent, {});
+      }
+      if (isFirst) {
+        if (isLast) {
+          from->line()->content.remove(from->columnNumber(), to->columnNumber() - from->columnNumber());
+        } else {
+          from->line()->content.truncate(from->columnNumber());
+        }
+      } else if (isLast) {
+        QStringRef joinedContent = to->lineContent().midRef(to->columnNumber());
+        from->line()->content.append(joinedContent);
+      }
+      const int toColumnNumber = to->columnNumber(); // Save as it might be updated by the loop.
+      for (int pointIndex = 0; pointIndex < movingFrom.line()->points.size();) {
+        SafePoint* point = movingFrom.line()->points[pointIndex];
+        if (isLast && point->columnNumber() >= toColumnNumber) {
+          // The point is after the deleted area.
+          point->setColumnNumber(point->columnNumber() + from->columnNumber() - toColumnNumber);
+          if (!isFirst) {
+            point->setLine(from->bufferLine_);
+            continue;
+          }
+        } else if (!isFirst || point->columnNumber() > from->columnNumber()) {
+          // The point is in the deleted area.
+          if (point->type_ == Type::CONTENT && movingTarget.isValid()) {
+            // Content points are moved to the undo buffer.
+            point->setColumnNumber(point->columnNumber() + movingTargetColumnNumber - movingFrom.columnNumber());
+            point->setBufferAndLine(movingTarget.buffer_, movingTarget.bufferLine_);
+            continue;
+          } else {
+            // Other points are moved to the point where the deleted area now collapsed.
+            point->moveTo(*from);
+            continue;
+          }
+        }
+        // Otherwise the point is before the deleted area; nothing to do.
+        ++pointIndex;
+      }
+      if (movingTarget.isValid() && !isLast) movingTarget.insertLineBreakBefore({});
+      if (isFirst) {
+        movingFrom.moveToStartOfNextLineOrMakeInvalid();
+      } else {
+        delete movingFrom.detachLineAndMoveToStartOfNextLineOrMakeInvalid();
+      }
+    } else {
+      // Not the first or the last line, so we can move the whole line, together with content points, to the movingTarget.
+      Buffer::Tree::Node* sourceLine = movingFrom.detachLineAndMoveToStartOfNextLineOrMakeInvalid();
+      for (SafePoint* point : sourceLine->value.points) {
+        if (movingTarget.isValid() && point->type_ == Type::CONTENT) {
+          // TODO: points shouldn't have a pointer to the buffer; then this wouldn't be needed.
+          point->buffer_ = movingTarget.buffer_;
+        } else {
+          point->moveTo(*from);
+        }
+      }
+      if (movingTarget.isValid()) {
+        Util::DRBTreeDefs::OperationOptions options;
+        options.repeats = true;
+        movingTarget.buffer_->tree_.attach(sourceLine, movingTarget.lineNumber(), options);
+        sourceLine->setDelta(1);
+        movingTarget.moveToStartOfNextLineOrMakeInvalid();
+      } else {
+        delete sourceLine;
+      }
+    }
+    if (isLast) break;
+  }
+  if (!safe()) moveTo(movingFrom);
 }
 
 Point::LineIterator Point::LinesForwardsIterable::begin() {

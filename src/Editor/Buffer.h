@@ -42,6 +42,7 @@ public:
 private:
   friend class BufferTest;
   friend class Point;
+  friend class Undo;
 
   struct Line {
     std::vector<SafePoint*> points;
@@ -111,6 +112,17 @@ public:
   bool moveLeft();
   bool moveRight();
 
+  class BufferStart {};
+  void moveTo(BufferStart) {
+    setLineNumber(1);
+    moveToLineStart();
+  }
+  class BufferEnd {};
+  void moveTo(BufferEnd) {
+    setLineNumber(buffer_->lineCount());
+    moveToLineEnd();
+  }
+
   const QString& lineContent() const { return line()->content; }
   bool contentTo(const Point& other, QString* output) const;
 
@@ -125,7 +137,7 @@ public:
 
   bool deleteCharBefore(Undo::Recorder recorder);
   bool deleteCharAfter(Undo::Recorder recorder);
-  bool deleteTo(Point* point, Undo::Recorder recorder);
+  bool deleteTo(const Point& point, Undo::Recorder recorder);
 
   template<typename PointType>
   static void sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
@@ -141,8 +153,10 @@ private:
 
   friend class SafePoint;
   friend class TempPoint;
+  friend class Undo;
 
-  Point(bool safe, Buffer* buffer);
+  enum class Type : uint8_t { TEMP, CONTENT, INTERACTIVE };
+  Point(Type type, Buffer* buffer);
 
   Point(const Point&) = delete;
   Point& operator=(const Point&) = delete;
@@ -150,11 +164,15 @@ private:
   Buffer::Line* line() const { return &bufferLine_->value; }
 
   void setLine(Buffer::Tree::Node* newLine);
-  void detachFromLine();
-  void attachToLine();
+  void setBufferAndLine(Buffer* buffer, Buffer::Tree::Node* newLine);
 
-  const bool safe_;
-  Buffer* const buffer_ = nullptr;
+  Buffer::Tree::Node* detachLineAndMoveToStartOfNextLineOrMakeInvalid();
+  void moveToStartOfNextLineOrMakeInvalid();
+  void moveContentBefore(const Point& other, const Point& destination);
+
+  bool safe() const { return type_ != Type::TEMP; }
+  const Type type_;
+  Buffer* buffer_ = nullptr;
   Buffer::Tree::Node* bufferLine_ = nullptr;
   int columnNumber_ = 0;
   int indexInLinePoints_ = -1;
@@ -162,15 +180,22 @@ private:
 
 class SafePoint : public Point {
 public:
-  SafePoint(Buffer* buffer) : Point(true, buffer) {}
+  class Content {};
+  SafePoint(Content, Buffer* buffer) : Point(Type::CONTENT, buffer) {}
+  class Interactive {};
+  SafePoint(Interactive, Buffer* buffer) : Point(Type::INTERACTIVE, buffer) {}
 };
 
 class TempPoint : public Point {
 public:
-  TempPoint(const Point& other) : Point(false, other.buffer()) { moveTo(other); }
-  TempPoint(Buffer* buffer, int line) : Point(false, buffer) {
+  TempPoint() : Point(Type::TEMP, nullptr) {}
+  TempPoint(const Point& other) : Point(Type::TEMP, other.buffer()) { moveTo(other); }
+  TempPoint(const TempPoint& other) : TempPoint(static_cast<const Point&>(other)) {}
+  TempPoint(Buffer* buffer, int line) : Point(Type::TEMP, buffer) {
     setLineNumber(line);
   }
+  template<typename Where>
+  TempPoint(Buffer* buffer, Where where) : Point(Type::TEMP, buffer) { moveTo(where); }
 };
 
 }  // namespace Editor

@@ -9,15 +9,19 @@ namespace Editor {
 
 class Undo::Op {
 public:
-  enum class Type { INSERTION, DELETION };
+  enum class Type {
+    // Text between start_ and end_ was inserted_. lines_ is ignored.
+    INSERTION,
+    // Text starting at start_ was deleted. end_ is ignored. Deleted text is present in lines_.
+    DELETION,
+  };
 
-  Op(OpType type, Buffer* buffer) : type_(type), start_(buffer), end_(buffer) {}
+  Op(OpType type, Buffer* originalBuffer) : type_(type), originalStart_(SafePoint::Content(), originalBuffer), originalEnd_(SafePoint::Content(), originalBuffer) {}
 
   const OpType type_;
-  SafePoint start_;
-  SafePoint end_;
-  // Newlines are implied between elements but not before the first element or after the last one.
-  std::vector<QString> lines_;
+  SafePoint originalStart_;
+  SafePoint originalEnd_;
+  std::unique_ptr<Buffer> undoBuffer_;
 };
 
 Undo::Undo(Buffer* buffer) : buffer_(buffer) {}
@@ -45,74 +49,48 @@ Undo::Op& Undo::newOp(RecordMode mode, OpType opType) {
   return *ops.back();
 }
 
-std::pair<Undo::DeletionHandling, Undo::Op&> Undo::deletionHandling(RecordMode mode, const Point& start, const Point& end) {
+TempPoint Undo::deletionHandling(RecordMode mode, const Point& start, const Point& end) {
   if (Op* op = currentOp(mode)) {
     if (op->type_ == OpType::DELETION) {
-      if (op->start_.samePositionAs(start)) return { DeletionHandling::APPEND, *op };
-      if (op->start_.samePositionAs(end)) return { DeletionHandling::PREPEND, *op };
+      if (op->originalStart_.samePositionAs(start)) {
+        // The new deletion is just after the previous one; extend the end.
+        return TempPoint(op->undoBuffer_.get(), Point::BufferEnd());
+      }
+      if (op->originalStart_.samePositionAs(end)) {
+        // The new deletion is just before the previous one; extend the start.
+        return TempPoint(op->undoBuffer_.get(), Point::BufferStart());
+      }
     }
   }
   Op& op = newOp(mode, OpType::DELETION);
-  op.start_.moveTo(start);
-  return { DeletionHandling::NEW, op };
+  op.originalStart_.moveTo(start);
+  op.undoBuffer_ = Buffer::create();
+  op.undoBuffer_->insertLast();
+  return TempPoint(op.undoBuffer_.get(), Point::BufferEnd());
 }
 
 void Undo::recordInsertion(RecordMode mode, const Point& start, const Point& end) {
   if (Op* op = currentOp(mode)) {
     if (op->type_ == OpType::INSERTION) {
-      if (op->start_.samePositionAs(start) || op->end_.samePositionAs(end))         return;
-      if (op->end_.samePositionAs(start)) {
-        op->end_.moveTo(end);
+      if (op->originalStart_.samePositionAs(start) || op->originalEnd_.samePositionAs(end)) {
+        // originalStart_ or originalEnd_ has already been updated so the current undo op already covers the new insertion.
         return;
       }
-      if (op->start_.samePositionAs(end)) {
-        op->start_.moveTo(start);
+      if (op->originalEnd_.samePositionAs(start)) {
+        // The new insertion is just after the previous one; extend the end.
+        op->originalEnd_.moveTo(end);
+        return;
+      }
+      if (op->originalStart_.samePositionAs(end)) {
+        // The new insertion is just before the previous one; extend the start.
+        op->originalStart_.moveTo(start);
         return;
       }
     }
   }
   Op& op = newOp(mode, OpType::INSERTION);
-  op.start_.moveTo(start);
-  op.end_.moveTo(end);
-}
-
-void Undo::recordPartialLineDeletion(RecordMode mode, const Point& start, const Point& end, QStringRef content) {
-  auto handling = deletionHandling(mode, start, end);
-  switch (handling.first) {
-    case DeletionHandling::PREPEND:
-      // TODO: remove toString() after QString::prepend() supports QStringRef
-      handling.second.lines_.front().prepend(content.toString());
-      return;
-    case DeletionHandling::APPEND:
-      handling.second.lines_.back().append(content);
-      return;
-    case DeletionHandling::NEW:
-      handling.second.lines_.push_back(content.toString());
-      return;
-  }
-}
-
-void Undo::recordMultilineDeletion(RecordMode mode, const Point& start, const Point& end, QStringRef firstLineDeleted, std::vector<QString> linesDeleted, QStringRef lastLineDeleted) {
-  auto handling = deletionHandling(mode, start, end);
-  switch (handling.first) {
-    case DeletionHandling::PREPEND:
-      // TODO: remove toString() after QString::prepend() supports QStringRef
-      handling.second.lines_.front().prepend(lastLineDeleted.toString());
-      std::move(linesDeleted.begin(), linesDeleted.end(), std::inserter(handling.second.lines_, handling.second.lines_.begin()));
-      handling.second.lines_.insert(handling.second.lines_.begin(),
-                                    firstLineDeleted.toString());
-      return;
-    case DeletionHandling::APPEND:
-      handling.second.lines_.back().append(firstLineDeleted);
-      std::move(linesDeleted.begin(), linesDeleted.end(), std::back_inserter(handling.second.lines_));
-      handling.second.lines_.push_back(lastLineDeleted.toString());
-      return;
-    case DeletionHandling::NEW:
-      handling.second.lines_.push_back(firstLineDeleted.toString());
-      std::move(linesDeleted.begin(), linesDeleted.end(), std::back_inserter(handling.second.lines_));
-      handling.second.lines_.push_back(lastLineDeleted.toString());
-      return;
-  }
+  op.originalStart_.moveTo(start);
+  op.originalEnd_.moveTo(end);
 }
 
 bool Undo::revertLast(RecordMode mode, Point* insertionPoint) {
@@ -123,19 +101,18 @@ bool Undo::revertLast(RecordMode mode, Point* insertionPoint) {
   Recorder recorder = {this, mode};
   switch (op->type_) {
     case OpType::INSERTION: {
-      const bool ok = op->start_.deleteTo(&op->end_, recorder);
+      const bool ok = op->originalStart_.deleteTo(op->originalEnd_, recorder);
       if (!ok) return false;
       break;
     }
     case OpType::DELETION: {
-      const bool ok = op->lines_.size() >= 2
-      ? op->start_.insertBefore(&op->lines_.front(), op->lines_.begin() + 1, op->lines_.end() - 1, &op->lines_.back(), recorder)
-      : op->start_.insertBefore(&op->lines_.front(), recorder);
-      if (!ok) return false;
+      TempPoint start(op->originalStart_);
+      TempPoint(op->undoBuffer_.get(), Point::BufferStart()).moveContentBefore(TempPoint(op->undoBuffer_.get(), Point::BufferEnd()), op->originalStart_);
+      recordInsertion(mode, start, op->originalStart_);
       break;
     }
   }
-  if (insertionPoint) insertionPoint->moveTo(op->start_);
+  if (insertionPoint) insertionPoint->moveTo(op->originalStart_);
   if (opMakesUnmodified_ == op.get()) {
     unmodified_ = true;
     opMakesUnmodified_ = nullptr;
