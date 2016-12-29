@@ -66,16 +66,6 @@ public:
 
   class Node;
 
-  struct ConstEntry {
-    Key key;
-    const Node* node;
-  };
-
-  struct Entry {
-    Key key;
-    Node* node;
-  };
-
   DRBTree() {}
   ~DRBTree() {}
 
@@ -116,7 +106,16 @@ public:
     EntryType entry;
   };
 
+  struct ConstEntry {
+    Key key;
+    const Node* node;
+  };
   typedef IteratorTemplate<ConstEntry> ConstIterator;
+
+  struct Entry {
+    Key key;
+    Node* node;
+  };
   typedef IteratorTemplate<Entry> Iterator;
 
   ConstIterator extreme(Side side, OperationOptions options) const { return extremeInternal<Iterator>(side, options); }
@@ -548,7 +547,7 @@ private:
 template<typename Key, typename Delta, typename Value>
 class DRBTree<Key, Delta, Value>::Node {
 public:
-  Node() : value() {}
+  Node() = default;
 
   template<typename InitValue>
   explicit Node(InitValue initValue) : value(initValue) {}
@@ -558,7 +557,7 @@ public:
 
   typedef DRBTree<Key, Delta, Value> Tree;
 
-  Value value;
+  Value value{};
 
   Tree* tree = nullptr;
 
