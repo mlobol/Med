@@ -51,7 +51,12 @@ private:
   void initFromStream(QTextStream* stream, const QString& name);
 
   Tree::Iterator line(int lineNumber);
+  // TODO: better implementation for lastLine(), using extreme().
+  Tree::Iterator lastLine() { return line(lineCount()); }
+
   Tree::Iterator insertLine(int lineNumber);
+  // TODO: better implementation for insertLast().
+  Tree::Iterator insertLast() { return insertLine(lineCount() + 1); }
 
   Tree tree_;
   QString name_;
