@@ -128,7 +128,11 @@ public:
   bool deleteTo(Point* point, Undo::Recorder recorder);
 
   template<typename PointType>
-  static void sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second);
+  static void sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
+    const bool leftIsFirst = left->bufferLine_ != right->bufferLine_ ? left->lineNumber() < right->lineNumber() : left->columnNumber() < right->columnNumber();
+    *first = leftIsFirst ? left : right;
+    *second = leftIsFirst ? right : left;
+  }
 
   LinesForwardsIterable linesForwards() { return LinesForwardsIterable(this); }
 

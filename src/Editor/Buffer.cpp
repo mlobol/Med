@@ -82,11 +82,6 @@ bool Buffer::save() {
 Point::Point(bool safe, Buffer* buffer) : safe_(safe), buffer_(buffer) {}
 Point::~Point() { setLine({}); }
 
-template<typename PointType>
-void Point::sortPair(typename std::remove_reference<PointType>::type* left, typename std::remove_reference<PointType>::type* right, PointType** first, PointType** second) {
-  const bool leftIsFirst = left->bufferLine_ != right->bufferLine_ ? left->lineNumber() < right->lineNumber() : left->columnNumber() < right->columnNumber();
-  *first = leftIsFirst ? left : right;
-  *second = leftIsFirst ? right : left;
 }
 
 void Point::setLine(Buffer::Tree::Node* newLine) {
