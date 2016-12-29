@@ -105,7 +105,6 @@ void Point::setLine(Buffer::Tree::Node* newLine) {
     // Make sure the column number is within limits.
     setColumnNumber(columnNumber());
   }
-  buffer_->modified_ = true;
 }
 
 bool Point::setColumnNumber(int columnNumber) {
