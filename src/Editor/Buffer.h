@@ -34,7 +34,10 @@ public:
   bool save();
   bool modified() { return modified_; }
 
-  int lineCount() const { return tree_.totalDelta(); }
+  int lineCount() const {
+    // If there are no lines, totalDelta() returns 0; otherwise, it returns first line number + line count. The first line number is 1, so we subtract that.
+    return qMax(0, tree_.totalDelta() - 1);
+  }
 
 private:
   friend class BufferTest;
